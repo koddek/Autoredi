@@ -1,0 +1,97 @@
+name: Build and Publish NuGet Packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'Directory.Build.*'
+      - 'Autoredi.sln'
+      - 'README.md'
+      - 'LICENSE'
+      - '.github/workflows/build-publish-nuget.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'Directory.Build.*'
+      - 'Autoredi.sln'
+      - 'README.md'
+      - 'LICENSE'
+      - '.github/workflows/build-publish-nuget.yml'
+
+env:
+  MAIN_PROJECT_FILE: 'src/Autoredi/Autoredi.csproj'
+  GENERATOR_PROJECT_FILE: 'src/Autoredi.Generators/Autoredi.Generators.csproj'
+  CONFIGURATION: 'Release'
+  OUTPUT_DIR: './nuget_packages'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Create SNK file from secret
+        run: echo "${{ secrets.SNK_FILE_BASE64 }}" | base64 --decode > ${{ github.workspace }}/Autoredi.snk
+
+      - name: Extract Version
+        id: extract_version
+        run: |
+          VERSION=$(grep '<Version>' ${{ env.MAIN_PROJECT_FILE }} | sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Build Projects
+        run: |
+          dotnet build "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}"
+          dotnet build "${{ env.GENERATOR_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}"
+
+      - name: Pack Projects
+        run: |
+          dotnet pack "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" --no-build -o "${{ env.OUTPUT_DIR }}"
+          dotnet pack "${{ env.GENERATOR_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" --no-build -o "${{ env.OUTPUT_DIR }}"
+
+      - name: Push to GitHub Packages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          dotnet nuget push "${{ env.OUTPUT_DIR }}/*.nupkg" \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}" \
+            --api-key "${{ secrets.GITHUB_TOKEN }}" \
+            --skip-duplicate
+
+      - name: Check if tag exists
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: check_tag
+        run: |
+          VERSION=${{ steps.extract_version.outputs.version }}
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists. Skipping tag creation."
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Tag v$VERSION does not exist. A new tag will be created."
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create and Push Git Tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          VERSION=${{ steps.extract_version.outputs.version }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
