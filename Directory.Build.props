@@ -1,0 +1,54 @@
+<Project>
+
+    <PropertyGroup>
+        <CurrentYear>$([System.DateTime]::UtcNow.ToString('yyyy'))</CurrentYear>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <!-- Common package properties -->
+        <Authors>Koddek</Authors>
+
+        <Copyright>© koddek $(CurrentYear)</Copyright>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/koddek/Autoredi</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/koddek/Autoredi</RepositoryUrl>
+        <PackageIcon>icon.png</PackageIcon>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Description>Autoredi is a .NET source generator that automates dependency injection registration at compile-time. Use simple attributes to register your services and interfaces, including support for aliased registrations for multiple implementations of the same interface, ensuring a clean and efficient DI setup.</Description>
+        <PackageTags>dependency-injection;source-generator;dotnet;di;ioc;registration</PackageTags>
+
+        <IsPackable>false</IsPackable> <!-- default off; override per‑project -->
+
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>true</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <NoWarn>CS1591;RS2008</NoWarn>
+
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(IsRoslynComponent)' == 'true'">
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    </PropertyGroup>
+
+    <!-- Sign all non‑test assemblies -->
+    <!--    <PropertyGroup Condition="'$(IsTestProject)' != 'true'">-->
+    <!--        <SignAssembly>true</SignAssembly>-->
+    <!--        <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)Autoredi.snk</AssemblyOriginatorKeyFile>-->
+    <!--    </PropertyGroup>-->
+
+    <ItemGroup>
+        <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/"/>
+        <None Include="$(MSBuildThisFileDirectory)icon.png" Pack="true" PackagePath="/"/>
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="*"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="*"/>
+    </ItemGroup>
+
+</Project>
