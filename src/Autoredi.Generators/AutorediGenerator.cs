@@ -11,8 +11,6 @@ namespace Autoredi.Generators;
 [Generator(LanguageNames.CSharp)]
 public sealed class AutorediGenerator : IIncrementalGenerator
 {
-    private const string AttributeFullName = "Autoredi.Attributes.AutorediAttribute";
-
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
 #if DEBUG
@@ -92,7 +90,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         }
 
         // Check 5: Get the attribute type symbol
-        var attributeType = compilation.GetTypeByMetadataName(AttributeFullName);
+        var attributeType = compilation.GetTypeByMetadataName(AutorediAttFullName);
         if (attributeType == null)
         {
             context.ReportDiagnostic(Diagnostic.Create(MissingAttributeTypeDescriptor, null));
@@ -153,7 +151,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
 
             // Check 11: Validate interface type
             string? interfaceName = null;
-            if (!interfaceTypeArg.IsNull && interfaceTypeArg.Value is ITypeSymbol interfaceSymbol)
+            if (interfaceTypeArg is { IsNull: false, Value: ITypeSymbol interfaceSymbol })
             {
                 if (interfaceSymbol.TypeKind != TypeKind.Interface)
                 {
@@ -179,7 +177,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
                 serviceKey = keyValue;
             }
 
-            string className = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var className = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
             registrations.Add(new RegistrationInfo
             {
@@ -279,7 +277,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
 
         foreach (var reg in registrations)
         {
-            string lifetimeMethod = reg.Lifetime switch
+            var lifetimeMethod = reg.Lifetime switch
             {
                 0 => "Transient",
                 1 => "Scoped",
@@ -312,6 +310,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             }
         }
 
+        sb.AppendLine();
         sb.AppendLine("        return services;");
         sb.AppendLine("    }");
         sb.AppendLine("}");
