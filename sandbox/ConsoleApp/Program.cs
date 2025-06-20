@@ -52,6 +52,12 @@ class Program
         var man = serviceProvider.GetRequiredService<Controllers.GreetingManager>();
         man.Greet(Keys.SMS, "Hello Manager!");
 
+        var armor = serviceProvider.GetKeyedService<IRepo>(Keys.Human);
+        armor.Get(50);
+
+        var weapon = serviceProvider.GetKeyedService<IRepo>(Keys.Alien);
+        weapon.Get(100);
+
         //var func = serviceProvider.GetKeyedService<Func<string, INotificationService>>();
 
         // Example 3: Resolve aliased services using IDictionary<string, TInterface>
@@ -173,6 +179,29 @@ public class SmsNotificationService : INotificationService
     }
 }
 
+public interface IRepo
+{
+    void Get(int id);
+}
+
+[Autoredi(interfaceType: typeof(IRepo), serviceKey: Keys.Human)]
+public class HumanArmorRepo : IRepo
+{
+    public void Get(int id)
+    {
+        Console.WriteLine($"[HUMAN ARMORY] NO:{id}");
+    }
+}
+
+[Autoredi(interfaceType: typeof(IRepo), serviceKey: Keys.Alien)]
+public class AlienWeaponRepo : IRepo
+{
+    public void Get(int id)
+    {
+        Console.WriteLine($"Alien Weapon  NO:{id}");
+    }
+}
+
 // [Autoredi(serviceKey:"Mrpwel")]
 // public class ValidService { }
 //
@@ -236,4 +265,6 @@ public static class Keys
 {
     public const string Email = "email";
     public const string SMS = "sms";
+    public const string Human = "human";
+    public const string Alien = "alien";
 }
