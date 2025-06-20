@@ -1,8 +1,9 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System.Collections.Immutable;
+using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using System.Collections.Immutable;
-using System.Text;
 using static Autoredi.Generators.Diagnostics;
 using static Autoredi.Generators.Names;
 
@@ -80,7 +81,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         var validLifetimeValues = serviceLifetimeType.GetMembers()
             .OfType<IFieldSymbol>()
             .Where(f => f.HasConstantValue)
-            .Select(f => (int)f.ConstantValue)
+            .Select(f => (int)f.ConstantValue!)
             .ToImmutableHashSet();
 
         if (validLifetimeValues.Count == 0)
@@ -98,6 +99,8 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         }
 
         var registrations = new List<RegistrationInfo>();
+
+        string? targetNamespace = null;
 
         foreach (var classDecl in classes)
         {
@@ -179,6 +182,15 @@ public sealed class AutorediGenerator : IIncrementalGenerator
 
             var className = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
+            // Determine namespace for the first valid class
+            if (targetNamespace == null)
+            {
+                var namespaceDecl = classDecl.Ancestors()
+                    .OfType<BaseNamespaceDeclarationSyntax>()
+                    .FirstOrDefault();
+                targetNamespace = namespaceDecl?.Name.ToString() ?? "Autoredi.Generated";
+            }
+
             registrations.Add(new RegistrationInfo
             {
                 ClassName = className,
@@ -192,7 +204,9 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         // Check 13: Validate for duplicate class registrations
         var duplicateClasses = registrations.GroupBy(r => r.ClassName)
             .Where(g => g.Count() > 1)
-            .Select(g => (ClassName: g.Key, Locations: g.Select(r => r.Location).ToList()));
+            .Select(g => (ClassName: g.Key, Locations: g.Select(r => r.Location).ToList()))
+            .ToList();
+
         foreach (var (className, locations) in duplicateClasses)
         {
             foreach (var location in locations)
@@ -206,7 +220,9 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         var duplicateServiceTypesWithoutKey = registrationsWithoutKey
             .GroupBy(r => r.InterfaceName ?? r.ClassName)
             .Where(g => g.Count() > 1)
-            .Select(g => (ServiceType: g.Key, Locations: g.Select(r => r.Location).ToList()));
+            .Select(g => (ServiceType: g.Key, Locations: g.Select(r => r.Location).ToList()))
+            .ToList();
+
         foreach (var (serviceType, locations) in duplicateServiceTypesWithoutKey)
         {
             foreach (var location in locations)
@@ -221,7 +237,9 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         var duplicateKeyedRegistrations = registrationsWithKey
             .GroupBy(r => (ServiceType: r.InterfaceName ?? r.ClassName, r.ServiceKey))
             .Where(g => g.Count() > 1)
-            .Select(g => (g.Key.ServiceType, g.Key.ServiceKey, Locations: g.Select(r => r.Location).ToList()));
+            .Select(g => (g.Key.ServiceType, g.Key.ServiceKey, Locations: g.Select(r => r.Location).ToList()))
+            .ToList();
+
         foreach (var (serviceType, key, locations) in duplicateKeyedRegistrations)
         {
             foreach (var location in locations)
@@ -235,7 +253,9 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         var interfaceUsage = registrations
             .Where(r => r.InterfaceName != null)
             .GroupBy(r => r.InterfaceName)
-            .Where(g => g.Count() > 1);
+            .Where(g => g.Count() > 1)
+            .ToList();
+
         foreach (var group in interfaceUsage)
         {
             var missingKeyRegistrations = group.Where(r => r.ServiceKey == null).ToList();
@@ -268,7 +288,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
         sb.AppendLine();
-        sb.AppendLine("namespace Autoredi;");
+        sb.AppendLine($"namespace {targetNamespace};");
         sb.AppendLine();
         sb.AppendLine("public static class AutorediExtensions");
         sb.AppendLine("{");
@@ -315,7 +335,9 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine("}");
 
-        context.AddSource("AutorediExtensions.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
+        // Generate file name based on namespace
+        var fileName = $"{targetNamespace}.AutorediExtensions.g.cs";
+        context.AddSource(fileName, SourceText.From(sb.ToString(), Encoding.UTF8));
     }
 
     private class RegistrationInfo
