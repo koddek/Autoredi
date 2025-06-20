@@ -1,73 +1,98 @@
-# Autoredi: Compile-Time Dependency Injection Registration
+# Autoredi (Auto Register Dependency Injection)
 
-Autoredi is a .NET source generator that streamlines dependency injection setup by automating service registration at compile-time. It enables you to declare your DI intent directly on your service classes using simple attributes, eliminating the need for manual `services.Add...` calls in your `Startup.cs` or `Program.cs`.
+[![Build Status](https://github.com/koddek/Autoredi/actions/workflows/build-publish-nuget.yml/badge.svg)](https://github.com/koddek/Autoredi/actions/workflows/build-publish-nuget.yml)
+[![NuGet Version](https://img.shields.io/nuget/v/Autoredi)](https://www.nuget.org/packages/Autoredi/)
+[![GitHub Package Downloads](https://img.shields.io/badge/downloads-0-blue?logo=github)](https://nuget.pkg.github.com/koddek/index.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
------
+Autoredi is a powerful source generator for .NET that simplifies dependency injection (DI) by automatically registering services in your Microsoft.Extensions.DependencyInjection container. With the `[Autoredi]` attribute, you can declaratively configure services with lifetimes, interfaces, and keys, reducing boilerplate and enhancing maintainability. Whether you're registering simple concrete classes, single interface implementations, or complex keyed services, Autoredi streamlines your DI setup.
 
-## What is Autoredi?
+## Table of Contents
 
-Autoredi is built on the power of .NET Source Generators. Instead of registering your services in a runtime method (like `AddSingleton`, `AddTransient`, `AddScoped`), you simply decorate your service classes with `[Autoredi]` attributes. During compilation, Autoredi analyzes these attributes and **generates** the necessary DI registration code for you. This approach ensures your DI setup is always up-to-date with your codebase and provides compile-time feedback for common DI misconfigurations.
-
------
-
-## Features
-
-* **Zero Manual Registration:** No more repetitive `services.Add...` lines.
-* **Compile-Time Safety:** Catches common DI issues (like missing interface implementations) at build time, not runtime.
-* **Clear Intent:** Declare DI lifetimes and interface relationships directly on your classes.
-* **Single Attribute, Clear Intent:**
-    * `[Autoredi(lifetime)]`: Registers a concrete service directly (e.g., `MyService`). Useful for services without interfaces or direct concrete resolutions.
-    * `[Autoredi<TInterface>(alias, lifetime)]`: Registers a service by its interface. The `alias` parameter is optional for single implementations and **required** when an interface has multiple concrete implementations.
-* **Aliased Registrations:** Easily register multiple concrete services for the same interface using aliases, making resolution explicit and manageable.
-* **Intelligent Warnings:** Provides helpful compiler warnings if an interface with multiple implementations lacks an alias, guiding you to best practices.
-
------
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Simple: Registering a Concrete Service](#simple-registering-a-concrete-service)
+  - [Intermediate: Single Interface Implementation](#intermediate-single-interface-implementation)
+  - [Advanced: Keyed Services for Multiple Implementations](#advanced-keyed-services-for-multiple-implementations)
+  - [Complex: Controllers and Dynamic Resolution](#complex-controllers-and-dynamic-resolution)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Installation
 
-1.  **Add the NuGet Package:**
-    Install the `Autoredi.Generators` NuGet package to your project (the project containing your service classes).
+To use Autoredi, install the NuGet packages for the main library and the source generator in your .NET project:
 
-    ```bash
-    dotnet add package Autoredi
-    ```
+```bash
+dotnet add package Autoredi --version 1.0.0
+```
 
-    *(Ensure you also have `Autoredi.Attributes` in a shared project or directly referenced if split.)*
+Ensure your project references `Microsoft.Extensions.DependencyInjection.Abstractions` (version 9.* or compatible):
 
------
+```xml
+<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+```
 
-## Usage Example
+Your project should target .NET 9.0 or a compatible framework. For example:
 
-### 1\. Define Services and Interfaces
+```xml
+<PropertyGroup>
+  <TargetFramework>net9.0</TargetFramework>
+</PropertyGroup>
+```
 
-Decorate your service classes with `Autoredi` attributes.
+## Usage
+
+Autoredi makes dependency injection effortless by generating DI registration code based on the `[Autoredi]` attribute. Let’s explore how to use Autoredi through a story that starts with a simple configuration service and evolves into a sophisticated notification system with controllers and dynamic service resolution.
+
+### Simple: Registering a Concrete Service
+
+Imagine you’re building a console application and need to manage basic configuration settings, like the application’s name. With Autoredi, you can register a concrete service without an interface by decorating the class with `[Autoredi]`.
 
 ```csharp
-// Define your interfaces
-namespace MyConsoleApp.Services;
+using Autoredi.Attributes;
+using Microsoft.Extensions.DependencyInjection;
 
-public interface ILogger
-{
-    void Log(string message);
-}
-
-public interface INotificationService
-{
-    void Send(string message);
-}
-
-// Implementations using Autoredi attributes
-using Autoredi.Attributes; // Important!
-
-// 1. Service without an interface (registers AppConfig directly)
 [Autoredi(ServiceLifetime.Singleton)]
 public class AppConfig
 {
     public string AppName => "MyConsoleApp";
 }
 
-// 2. Single implementation of an interface (registers ILogger -> ConsoleLogger)
-[Autoredi<ILogger>(ServiceLifetime.Transient)]
+class Program
+{
+    static void Main(string[] args)
+    {
+        var services = new ServiceCollection();
+        services.AddAutorediServices(); // Generated extension method
+        var serviceProvider = services.BuildServiceProvider();
+
+        var config = serviceProvider.GetRequiredService<AppConfig>();
+        Console.WriteLine($"Application Name: {config.AppName}");
+    }
+}
+```
+
+**Output**:
+```
+Application Name: MyConsoleApp
+```
+
+Here, the `[Autoredi(ServiceLifetime.Singleton)]` attribute tells Autoredi to register `AppConfig` as a singleton. The generated `AddAutorediServices` method handles the registration (`services.AddSingleton<AppConfig>()`), so you can resolve `AppConfig` directly from the service provider. No manual DI setup required!
+
+### Intermediate: Single Interface Implementation
+
+As your application grows, you decide to add logging functionality. You define an `ILogger` interface and implement it with `ConsoleLogger`. Autoredi makes it easy to register this implementation.
+
+```csharp
+using Autoredi.Attributes;
+using Microsoft.Extensions.DependencyInjection;
+
+public interface ILogger
+{
+    void Log(string message);
+}
+
+[Autoredi(ServiceLifetime.Transient, typeof(ILogger))]
 public class ConsoleLogger : ILogger
 {
     public void Log(string message)
@@ -76,8 +101,47 @@ public class ConsoleLogger : ILogger
     }
 }
 
-// 3. Multiple implementations of an interface, using aliases (registers INotificationService via dictionary)
-[Autoredi<INotificationService>("Email", ServiceLifetime.Singleton)]
+class Program
+{
+    static void Main(string[] args)
+    {
+        var services = new ServiceCollection();
+        services.AddAutorediServices();
+        var serviceProvider = services.BuildServiceProvider();
+
+        var logger = serviceProvider.GetRequiredService<ILogger>();
+        logger.Log("Application started successfully.");
+    }
+}
+```
+
+**Output**:
+```
+[LOG]: Application started successfully.
+```
+
+The `[Autoredi(ServiceLifetime.Transient, typeof(ILogger))]` attribute registers `ConsoleLogger` as a transient implementation of `ILogger`. Autoredi generates `services.AddTransient<ILogger, ConsoleLogger>()`, allowing you to resolve `ILogger` seamlessly.
+
+### Advanced: Keyed Services for Multiple Implementations
+
+Your application now needs to send notifications via email and SMS, both implementing the same `INotificationService` interface. Autoredi supports keyed services to distinguish multiple implementations.
+
+```csharp
+using Autoredi.Attributes;
+using Microsoft.Extensions.DependencyInjection;
+
+public static class Keys
+{
+    public const string Email = "email";
+    public const string SMS = "sms";
+}
+
+public interface INotificationService
+{
+    void Send(string message);
+}
+
+[Autoredi(ServiceLifetime.Singleton, typeof(INotificationService), Keys.Email)]
 public class EmailNotificationService : INotificationService
 {
     public void Send(string message)
@@ -86,7 +150,7 @@ public class EmailNotificationService : INotificationService
     }
 }
 
-[Autoredi<INotificationService>("SMS", ServiceLifetime.Singleton)]
+[Autoredi(ServiceLifetime.Singleton, typeof(INotificationService), Keys.SMS)]
 public class SmsNotificationService : INotificationService
 {
     public void Send(string message)
@@ -94,76 +158,149 @@ public class SmsNotificationService : INotificationService
         Console.WriteLine($"[SMS]: Sending '{message}' via SMS.");
     }
 }
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        var services = new ServiceCollection();
+        services.AddAutorediServices();
+        var serviceProvider = services.BuildServiceProvider();
+
+        var emailService = serviceProvider.GetKeyedService<INotificationService>(Keys.Email);
+        var smsService = serviceProvider.GetKeyedService<INotificationService>(Keys.SMS);
+
+        emailService.Send("Hello AOL!!");
+        smsService.Send("Hello Moto!!");
+    }
+}
 ```
 
-### 2\. Register and Use Services
+**Output**:
+```
+[EMAIL]: Sending 'Hello AOL!!' via Email.
+[SMS]: Sending 'Hello Moto!!' via SMS.
+```
 
-In your `Program.cs` (for a .NET 6+ console app with top-level statements), use the generated extension method:
+By specifying service keys (`"email"` and `"sms"`), Autoredi registers `EmailNotificationService` and `SmsNotificationService` as keyed services (`services.AddKeyedSingleton<INotificationService, EmailNotificationService>("email")`, etc.). You resolve them using `GetKeyedService`, enabling precise control over which implementation to use.
+
+### Complex: Controllers and Dynamic Resolution
+
+Now, you want to orchestrate notifications through controllers and dynamically select services at runtime. Autoredi supports advanced scenarios like keyed service injection in constructors and factory-based resolution.
 
 ```csharp
-// Program.cs
+using Autoredi.Attributes;
 using Microsoft.Extensions.DependencyInjection;
-using MyConsoleApp.Services;
-using Autoredi.Generated; // This is crucial for the generated extension method
-using System.Collections.Generic; // Required for IDictionary resolution
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
-// 1. Create a ServiceCollection
-var services = new ServiceCollection();
+public static class Keys
+{
+    public const string Email = "email";
+    public const string SMS = "sms";
+}
 
-// 2. Register Autoredi services using the generated extension method
-// This call will include all services decorated with [Autoredi] attributes.
-services.AddAutorediServices();
+public interface INotificationService
+{
+    void Send(string message);
+}
 
-// 3. Build the ServiceProvider
-var serviceProvider = services.BuildServiceProvider();
+[Autoredi(ServiceLifetime.Singleton, typeof(INotificationService), Keys.Email)]
+public class EmailNotificationService : INotificationService
+{
+    public void Send(string message)
+    {
+        Console.WriteLine($"[EMAIL]: Sending '{message}' via Email.");
+    }
+}
 
-// 4. Resolve and use your services
+[Autoredi(ServiceLifetime.Singleton, typeof(INotificationService), Keys.SMS)]
+public class SmsNotificationService : INotificationService
+{
+    public void Send(string message)
+    {
+        Console.WriteLine($"[SMS]: Sending '{message}' via SMS.");
+    }
+}
 
-// Resolve a service registered without an interface
-var config = serviceProvider.GetRequiredService<AppConfig>();
-Console.WriteLine($"Application Name: {config.AppName}");
+public static class Controllers
+{
+    [Autoredi]
+    public class MyController
+    {
+        private readonly INotificationService _greeting;
 
-// Resolve a service registered with a single interface implementation
-var logger = serviceProvider.GetRequiredService<ILogger>();
-logger.Log("Application started.");
+        public MyController([FromKeyedServices(Keys.SMS)] INotificationService greeting)
+        {
+            _greeting = greeting;
+        }
 
-// Resolve aliased services using IDictionary<string, TInterface>
-var notificationServices = serviceProvider.GetRequiredService<IDictionary<string, INotificationService>>();
+        public void SayHello(string message)
+        {
+            _greeting.Send(message);
+        }
+    }
 
-var emailService = notificationServices["Email"];
-emailService.Send("Welcome to Autoredi!");
+    [Autoredi]
+    public class GreetingManager
+    {
+        private readonly Func<string, INotificationService> _resolver;
 
-var smsService = notificationServices["SMS"];
-smsService.Send("Your order has been shipped.");
+        public GreetingManager(Func<string, INotificationService> resolver)
+        {
+            _resolver = resolver;
+        }
 
-Console.WriteLine("Services resolved and used successfully!");
+        public void Greet(string key, string name)
+        {
+            var service = _resolver(key) ?? throw new InvalidOperationException("Unsupported key.");
+            service.Send(name);
+        }
+    }
+}
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        var services = new ServiceCollection();
+        services.AddAutorediServices();
+        services.AddSingleton<Func<string, INotificationService>>(sp => key =>
+            sp.GetKeyedService<INotificationService>(key));
+        var serviceProvider = services.BuildServiceProvider();
+
+        var controller = serviceProvider.GetRequiredService<Controllers.MyController>();
+        controller.SayHello("Hello Controller!");
+
+        var manager = serviceProvider.GetRequiredService<Controllers.GreetingManager>();
+        manager.Greet(Keys.SMS, "Hello Manager!");
+    }
+}
 ```
 
------
+**Output**:
+```
+[SMS]: Sending 'Hello Controller!' via SMS.
+[SMS]: Sending 'Hello Manager!' via SMS.
+```
 
-## Diagnostics and Warnings
+In this scenario:
+- `MyController` uses `[Autoredi]` to register itself and injects a keyed `INotificationService` (SMS) via `[FromKeyedServices("sms")]`.
+- `GreetingManager` dynamically resolves `INotificationService` instances using a `Func<string, INotificationService>` factory, registered manually to map keys to services.
+- Autoredi generates registrations for `MyController` and `GreetingManager` (`services.AddTransient<MyController>()`, etc.), integrating seamlessly with the keyed services.
 
-Autoredi provides custom compiler diagnostics to guide you:
+This demonstrates Autoredi’s flexibility in handling complex DI scenarios, from constructor injection to runtime service selection.
 
-* **`AUTOREDI001` (Warning): Interface Requires Alias**
-    * Triggered when an interface is implemented by multiple concrete services, and one or more of those implementations are missing an `alias` in their `Autoredi<TInterface>` attribute. All implementations for such an interface must have an alias.
-* **`AUTOREDI002` (Warning): Alias on Non-Generic Attribute**
-    * Triggered if you try to specify an `alias` on the non-generic `[Autoredi]` attribute. Aliases are only applicable to `[Autoredi<TInterface>]` for interface-based registrations.
-* **`AUTOREDI003` (Error): Generic AutorediAttribute Missing Interface Implementation**
-    * Triggered if a class is decorated with `[Autoredi<TInterface>]` but does not actually implement `TInterface`. This is an error because it would lead to runtime failures.
-* **`AUTOREDI004` (Error): Multiple Autoredi Attributes on Class**
-    * Triggered if a class has more than one `Autoredi` attribute applied (e.g., `[Autoredi]` and `[Autoredi<TInterface>]` on the same class). Only one `Autoredi` attribute (of any type) is allowed per class.
+## Contributing
 
------
+Contributions are welcome! To get started:
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/YourFeature`).
+3. Commit your changes (`git commit -m 'Add YourFeature'`).
+4. Push to the branch (`git push origin feature/YourFeature`).
+5. Open a pull request.
 
-## Contribution
-
-Contributions are welcome\! Please feel free to open issues or submit pull requests.
-
------
+Please include tests for new features and follow the existing coding style. Report issues or suggest enhancements via the [issue tracker](https://github.com/koddek/Autoredi/issues).
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE.md).
-
------
+Autoredi is licensed under the [MIT License](LICENSE). See the LICENSE file for details.
