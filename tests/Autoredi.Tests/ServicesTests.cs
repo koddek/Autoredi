@@ -1,8 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using TUnit.Assertions.AssertConditions.Throws;
-using Autoredi;
-using Autoredi.Attributes;
-using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
 namespace Autoredi.Tests;

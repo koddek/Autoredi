@@ -35,10 +35,10 @@
     </PropertyGroup>
 
     <!-- Sign all non‑test assemblies -->
-    <!--    <PropertyGroup Condition="'$(IsTestProject)' != 'true'">-->
-    <!--        <SignAssembly>true</SignAssembly>-->
-    <!--        <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)Autoredi.snk</AssemblyOriginatorKeyFile>-->
-    <!--    </PropertyGroup>-->
+    <PropertyGroup Condition="'$(IsTestProject)' != 'true'">
+        <SignAssembly>true</SignAssembly>
+        <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)Autoredi.snk</AssemblyOriginatorKeyFile>
+    </PropertyGroup>
 
     <ItemGroup>
         <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/"/>

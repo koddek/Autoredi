@@ -1,10 +1,5 @@
 ﻿using Autoredi.Attributes;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using Autoredi.Attributes;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using TUnit.Core;
 
 namespace Autoredi.Tests;
 
