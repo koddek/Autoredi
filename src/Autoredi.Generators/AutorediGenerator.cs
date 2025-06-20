@@ -279,9 +279,9 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         {
             var lifetimeMethod = reg.Lifetime switch
             {
-                0 => "Transient",
+                0 => "Singleton",
                 1 => "Scoped",
-                2 => "Singleton",
+                2 => "Transient",
                 _ => throw new InvalidOperationException("Invalid lifetime") // Unreachable due to prior validation
             };
 
