@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Autoredi.Attributes;
 
 /// <summary>
-/// Marks a class for automatic registration in the Microsoft Dependency Injection container.
+/// Autoredi (Auto Register Dependency Injection), marks a class for automatic registration in the Microsoft Dependency Injection container.
 /// </summary>
 /// <param name="lifetime">The service lifetime (e.g., Transient, Scoped, Singleton).</param>
 /// <param name="interfaceType">The optional interface to register the class against.</param>
