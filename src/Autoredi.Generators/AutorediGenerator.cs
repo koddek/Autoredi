@@ -98,9 +98,11 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             return;
         }
 
-        var registrations = new List<RegistrationInfo>();
+        // Determine target namespace from project name
+        var projectName = compilation.AssemblyName ?? "Autoredi.Generated";
+        var targetNamespace = $"{projectName}.Autoredi";
 
-        string? targetNamespace = null;
+        var registrations = new List<RegistrationInfo>();
 
         foreach (var classDecl in classes)
         {
@@ -182,15 +184,6 @@ public sealed class AutorediGenerator : IIncrementalGenerator
 
             var className = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-            // Determine namespace for the first valid class
-            if (targetNamespace == null)
-            {
-                var namespaceDecl = classDecl.Ancestors()
-                    .OfType<BaseNamespaceDeclarationSyntax>()
-                    .FirstOrDefault();
-                targetNamespace = namespaceDecl?.Name.ToString() ?? "Autoredi.Generated";
-            }
-
             registrations.Add(new RegistrationInfo
             {
                 ClassName = className,
@@ -245,7 +238,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             foreach (var location in locations)
             {
                 context.ReportDiagnostic(Diagnostic.Create(DuplicateRegistrationWithKeyDescriptor, location,
-                    serviceType, key));
+                    serviceType));
             }
         }
 
@@ -335,8 +328,8 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine("}");
 
-        // Generate file name based on namespace
-        var fileName = $"{targetNamespace}.AutorediExtensions.g.cs";
+        // Generate file name based on project name
+        var fileName = $"{targetNamespace}.AutorediExtensions.cs";
         context.AddSource(fileName, SourceText.From(sb.ToString(), Encoding.UTF8));
     }
 
