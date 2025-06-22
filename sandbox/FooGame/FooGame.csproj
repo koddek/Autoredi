@@ -9,6 +9,7 @@
     <!-- Reference the main project -->
     <ItemGroup>
         <ProjectReference Include="..\..\src\Autoredi\Autoredi.csproj" />
+        <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
     </ItemGroup>
 
     <!-- Reference the source generator project -->

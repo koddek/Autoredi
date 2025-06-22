@@ -4,6 +4,7 @@ using Autoredi;
 using Autoredi.Attributes;
 using ConsoleApp.Autoredi;
 using FooGame;
+using Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
 // using Autoredi.Generated; // This is crucial to get the generated extension method
@@ -203,19 +204,12 @@ namespace ConsoleApp
         }
     }
 
-    [Autoredi(ServiceLifetime.Singleton)]
-    public class MyService2
+    [Autoredi(ServiceLifetime.Transient, typeof(IFoo))]
+    public class Foo : IFoo
     {
-        private readonly IFoo _foo;
-
-        public MyService2(IFoo foo)
-        {
-            _foo = foo;
-        }
-
         public void Activate()
         {
-            _foo.Activate();
+            Console.WriteLine("Foo Activated.");
         }
     }
 }

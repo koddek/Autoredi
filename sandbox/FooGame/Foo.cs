@@ -1,19 +1,22 @@
 ﻿using Autoredi.Attributes;
+using Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FooGame;
 
-public interface IFoo
+[Autoredi(ServiceLifetime.Transient)]
+public class MyService2
 {
-    void Activate();
-}
+    private readonly IFoo _foo;
 
-[Autoredi(ServiceLifetime.Singleton, typeof(IFoo))]
-public class Foo : IFoo
-{
+    public MyService2(IFoo foo)
+    {
+        _foo = foo;
+    }
+
     public void Activate()
     {
-        Console.WriteLine("Foo Activated.");
+        _foo.Activate();
     }
 }
 
