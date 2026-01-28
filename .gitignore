@@ -892,8 +892,26 @@ FodyWeavers.xsd
 # Verify
 *.received.*
 *.received/
+
+# Rider
 /packages/
 riderModule.iml
 /_ReSharper.Caches/
 
+# Secrets
+secrets.json
+secrets.Development.json
+local.props
+NuGet.Config
 Autoredi.snk
+
+# AI
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+SCRATCH.md
+.tmp/
+execution/
+.env
+credentials.json
+token.json
