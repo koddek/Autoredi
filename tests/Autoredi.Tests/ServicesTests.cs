@@ -1,7 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using TUnit.Assertions.AssertConditions.Throws;
-using NSubstitute;
-
 namespace Autoredi.Tests;
 
 public class ServicesTests

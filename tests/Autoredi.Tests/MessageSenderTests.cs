@@ -1,6 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using NSubstitute;
-
 namespace Autoredi.Tests;
 
 public class MessageSenderTests
@@ -32,7 +29,7 @@ public class MessageSenderTests
 
         // Assert
         await Assert.That(sender).IsNotNull();
-        await Assert.That(sender).IsAssignableTo(expectedType);
+        await Assert.That(sender).IsOfType(expectedType);
     }
 
     [Test]

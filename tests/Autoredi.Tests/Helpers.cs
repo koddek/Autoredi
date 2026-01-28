@@ -1,5 +1,4 @@
 ﻿using Autoredi.Attributes;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Autoredi.Tests;
 

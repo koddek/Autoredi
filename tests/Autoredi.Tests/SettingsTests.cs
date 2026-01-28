@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Autoredi.Tests;
 
 public class SettingsTests

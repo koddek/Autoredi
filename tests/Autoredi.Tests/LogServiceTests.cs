@@ -1,6 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using NSubstitute;
-
 namespace Autoredi.Tests;
 
 public class LogServiceTests
