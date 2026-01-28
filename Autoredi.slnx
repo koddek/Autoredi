@@ -1,1 +1,27 @@
-﻿<Solution />
+<Solution>
+  <Configurations>
+    <Configuration Name="Debug" />
+    <Configuration Name="Release" />
+  </Configurations>
+
+  <Folder Name="/src/">
+    <Project Path="src/Autoredi/Autoredi.csproj" />
+    <Project Path="src/Autoredi.Generators/Autoredi.Generators.csproj" />
+  </Folder>
+
+  <Folder Name="/tests/">
+    <Project Path="tests/Autoredi.Tests/Autoredi.Tests.csproj" />
+  </Folder>
+
+  <Folder Name="/samples/">
+    <Project Path="samples/Samples.Common/Samples.Common.csproj" />
+    <Project Path="samples/Samples.Basic/Samples.Basic.csproj" />
+    <Project Path="samples/Samples.SingleInterface/Samples.SingleInterface.csproj" />
+    <Project Path="samples/Samples.KeyedServices/Samples.KeyedServices.csproj" />
+    <Project Path="samples/Samples.Complete/Samples.Complete.csproj" />
+  </Folder>
+
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Autoredi.Benchmarks/Autoredi.Benchmarks.csproj" />
+  </Folder>
+</Solution>

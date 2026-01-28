@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
@@ -9,20 +9,20 @@
     <!-- Reference the main project -->
     <ItemGroup>
         <ProjectReference Include="..\..\src\Autoredi\Autoredi.csproj" />
-        <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
     </ItemGroup>
 
     <!-- Reference the source generator project -->
     <ItemGroup>
         <ProjectReference
-                Include="..\..\src\Autoredi.Generators\Autoredi.Generators.csproj"
-                OutputItemType="Analyzer"
-                ReferenceOutputAssembly="false"
+            Include="..\..\src\Autoredi.Generators\Autoredi.Generators.csproj"
+            OutputItemType="Analyzer"
+            ReferenceOutputAssembly="false"
         />
     </ItemGroup>
+
     <ItemGroup>
-      <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
-      <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
+        <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
+        <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
     </ItemGroup>
 
 </Project>
