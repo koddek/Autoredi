@@ -157,4 +157,46 @@ public static class Diagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidGroupNameDescriptor = new(
+        id: "AUTOREDI018",
+        title: "Invalid group name",
+        messageFormat:
+        "The group name '{0}' contains invalid characters. Group names must be valid C# identifiers (letters, digits, underscore) and cannot be reserved keywords.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidPriorityTypeDescriptor = new(
+        id: "AUTOREDI019",
+        title: "Invalid priority type",
+        messageFormat: "The priority value for class '{0}' must be an integer.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor PriorityOutOfRangeDescriptor = new(
+        id: "AUTOREDI020",
+        title: "Priority value out of range",
+        messageFormat:
+        "The priority value {1} for class '{0}' is out of range. Priority must be between 0 and 999 (inclusive).",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor GroupNameTooLongDescriptor = new(
+        id: "AUTOREDI021",
+        title: "Group name too long",
+        messageFormat: "The group name '{0}' exceeds the maximum length of 100 characters.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor GroupNameIsKeywordDescriptor = new(
+        id: "AUTOREDI022",
+        title: "Group name is a reserved keyword",
+        messageFormat: "The group name '{0}' is a C# reserved keyword and cannot be used as a group name.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

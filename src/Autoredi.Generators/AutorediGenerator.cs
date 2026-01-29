@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -132,7 +132,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             }
 
             // Check 8: Validate constructor arguments
-            if (attributeData.ConstructorArguments.Length != 3)
+            if (attributeData.ConstructorArguments.Length < 3 || attributeData.ConstructorArguments.Length > 5)
             {
                 context.ReportDiagnostic(Diagnostic.Create(InvalidAttributeArgumentsDescriptor, classDecl.GetLocation(),
                     classSymbol.Name));
@@ -142,6 +142,49 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             var lifetimeArg = attributeData.ConstructorArguments[0];
             var interfaceTypeArg = attributeData.ConstructorArguments[1];
             var serviceKeyArg = attributeData.ConstructorArguments[2];
+
+            // Extract group (argument 3)
+            string? group = null;
+            if (attributeData.ConstructorArguments.Length >= 4)
+            {
+                var groupArg = attributeData.ConstructorArguments[3];
+                if (!groupArg.IsNull && groupArg.Value is string groupValue)
+                {
+                    group = ValidateGroupName(groupValue, classDecl.GetLocation(), context);
+                }
+            }
+
+            // Extract priority (argument 4)
+            int priority = 0;
+            if (attributeData.ConstructorArguments.Length >= 5)
+            {
+                var priorityArg = attributeData.ConstructorArguments[4];
+                if (!priorityArg.IsNull)
+                {
+                    if (priorityArg.Value is int priorityValue)
+                    {
+                        if (priorityValue < 0 || priorityValue > 999)
+                        {
+                            context.ReportDiagnostic(Diagnostic.Create(
+                                PriorityOutOfRangeDescriptor,
+                                classDecl.GetLocation(),
+                                classSymbol.Name,
+                                priorityValue));
+                            continue;
+                        }
+
+                        priority = priorityValue;
+                    }
+                    else
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            InvalidPriorityTypeDescriptor,
+                            classDecl.GetLocation(),
+                            classSymbol.Name));
+                        continue;
+                    }
+                }
+            }
 
             // Check 9: Validate lifetime argument type
             if (lifetimeArg.Value is not int lifetimeInt)
@@ -195,6 +238,8 @@ public sealed class AutorediGenerator : IIncrementalGenerator
                 Lifetime = lifetimeInt,
                 InterfaceName = interfaceName,
                 ServiceKey = serviceKey,
+                Group = group,
+                Priority = priority,
                 Location = classDecl.GetLocation()
             });
         }
@@ -280,16 +325,27 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             return;
         }
 
-        // Sort registrations
-        var sortedRegistrations = registrations
-            .Where(r => r.InterfaceName == null)
-            .OrderBy(r => r.ClassName)
-            .Concat(
-                registrations
-                    .Where(r => r.InterfaceName != null)
-                    .OrderBy(r => r.InterfaceName)
-                    .ThenBy(r => r.ClassName))
-            .ToList();
+        // Sort registrations - Removed as we do per-group sorting now
+
+        // Identify all unique groups (local + referenced)
+        var localGroups = new HashSet<string>(
+            registrations
+                .Select(r => string.IsNullOrWhiteSpace(r.Group) ? "Default" : r.Group!)
+                .Distinct());
+
+        var allGroups = new HashSet<string>(localGroups);
+        foreach (var refAsm in referencedAutorediNamespaces)
+        {
+            foreach (var group in refAsm.Groups)
+            {
+                allGroups.Add(group);
+            }
+        }
+
+        // Group local registrations
+        var groupedRegistrations = registrations
+            .GroupBy(r => string.IsNullOrWhiteSpace(r.Group) ? "Default" : r.Group)
+            .ToDictionary(g => g.Key!, g => g.ToList());
 
         // Generate the extension method
         var sb = new StringBuilder();
@@ -301,14 +357,17 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("public static class AutorediExtensions");
         sb.AppendLine("{");
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// Registers all Autoredi services from this assembly and referenced assemblies.");
+        sb.AppendLine("    /// </summary>");
         sb.AppendLine("    public static IServiceCollection AddAutorediServices(this IServiceCollection services)");
         sb.AppendLine("    {");
 
         // Call AddAutorediServices for referenced projects using fully qualified names
-        foreach (var ns in referencedAutorediNamespaces)
+        foreach (var refAsm in referencedAutorediNamespaces)
         {
-            var assemblyName = ns.Substring(0, ns.Length - ".Autoredi".Length);
-            sb.AppendLine($"        {ns}.AutorediExtensions.AddAutorediServices(services); // {assemblyName}");
+            var assemblyName = refAsm.Namespace.Substring(0, refAsm.Namespace.Length - ".Autoredi".Length);
+            sb.AppendLine($"        {refAsm.Namespace}.AutorediExtensions.AddAutorediServices(services); // {assemblyName}");
         }
 
         if (!referencedAutorediNamespaces.IsEmpty)
@@ -316,58 +375,103 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             sb.AppendLine();
         }
 
-        foreach (var reg in sortedRegistrations)
+        // Call all local group methods
+        foreach (var group in localGroups.OrderBy(g => g))
         {
-            var lifetimeMethod = reg.Lifetime switch
-            {
-                0 => "Singleton",
-                1 => "Scoped",
-                2 => "Transient",
-                _ => throw new InvalidOperationException("Invalid lifetime") // Unreachable
-            };
-
-            if (reg.ServiceKey == null)
-            {
-                if (reg.InterfaceName != null)
-                {
-                    sb.AppendLine($"        services.Add{lifetimeMethod}<{reg.InterfaceName}, {reg.ClassName}>();");
-                }
-                else
-                {
-                    sb.AppendLine($"        services.Add{lifetimeMethod}<{reg.ClassName}>();");
-                }
-            }
-            else
-            {
-                if (reg.InterfaceName != null)
-                {
-                    sb.AppendLine(
-                        $"        services.AddKeyed{lifetimeMethod}<{reg.InterfaceName}, {reg.ClassName}>(\"{reg.ServiceKey}\");");
-                }
-                else
-                {
-                    sb.AppendLine($"        services.AddKeyed{lifetimeMethod}<{reg.ClassName}>(\"{reg.ServiceKey}\");");
-                }
-            }
+            var groupMethodName = $"AddAutorediServices{group}";
+            sb.AppendLine($"        services.{groupMethodName}();");
         }
 
         sb.AppendLine();
         sb.AppendLine("        return services;");
         sb.AppendLine("    }");
+
+        // Generate group-specific methods for ALL known groups (local + referenced)
+        foreach (var group in allGroups.OrderBy(g => g))
+        {
+            sb.AppendLine();
+            var groupMethodName = $"AddAutorediServices{group}";
+
+            sb.AppendLine($"    /// <summary>");
+            sb.AppendLine($"    /// Registers Autoredi services from the '{group}' group.");
+            sb.AppendLine($"    /// </summary>");
+            sb.AppendLine($"    public static IServiceCollection {groupMethodName}(this IServiceCollection services)");
+            sb.AppendLine("    {");
+
+            // 1. Call referenced assemblies' group methods if they exist
+            foreach (var refAsm in referencedAutorediNamespaces)
+            {
+                if (refAsm.Groups.Contains(group))
+                {
+                    sb.AppendLine($"        {refAsm.Namespace}.AutorediExtensions.{groupMethodName}(services);");
+                }
+            }
+
+            // 2. Register local services for this group
+            if (groupedRegistrations.TryGetValue(group, out var groupRegs))
+            {
+                // Sort within group: Priority DESC, then has-interface, then name
+                var sortedInGroup = groupRegs
+                    .OrderByDescending(r => r.Priority)
+                    .ThenBy(r => r.InterfaceName == null ? 0 : 1)
+                    .ThenBy(r => r.InterfaceName ?? r.ClassName, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                foreach (var reg in sortedInGroup)
+                {
+                    var lifetimeMethod = reg.Lifetime switch
+                    {
+                        0 => "Singleton",
+                        1 => "Scoped",
+                        2 => "Transient",
+                        _ => throw new InvalidOperationException("Invalid lifetime") // Unreachable
+                    };
+
+                    if (reg.ServiceKey == null)
+                    {
+                        if (reg.InterfaceName != null)
+                        {
+                            sb.AppendLine($"        services.Add{lifetimeMethod}<{reg.InterfaceName}, {reg.ClassName}>();");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"        services.Add{lifetimeMethod}<{reg.ClassName}>();");
+                        }
+                    }
+                    else
+                    {
+                        if (reg.InterfaceName != null)
+                        {
+                            sb.AppendLine(
+                                $"        services.AddKeyed{lifetimeMethod}<{reg.InterfaceName}, {reg.ClassName}>(\"{reg.ServiceKey}\");");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"        services.AddKeyed{lifetimeMethod}<{reg.ClassName}>(\"{reg.ServiceKey}\");");
+                        }
+                    }
+                }
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("        return services;");
+            sb.AppendLine("    }");
+        }
+
         sb.AppendLine("}");
 
         var fileName = $"{targetNamespace}.AutorediExtensions.cs";
         context.AddSource(fileName, SourceText.From(sb.ToString(), Encoding.UTF8));
     }
 
-    private static ImmutableArray<string> GetReferencedAutorediNamespaces(
+    private static ImmutableArray<ReferencedAssemblyAutorediInfo> GetReferencedAutorediNamespaces(
         Compilation compilation,
         string projectName,
         INamedTypeSymbol attributeType,
         HashSet<string> visitedAssemblies,
         SourceProductionContext context)
     {
-        var namespaces = new List<string>();
+        var result = new List<ReferencedAssemblyAutorediInfo>();
 
         foreach (var reference in compilation.References)
         {
@@ -400,13 +504,21 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             // Check for Autoredi attribute or namespace
             if (HasAutorediAttributeOrNamespace(compilation, asm, attributeType))
             {
-                namespaces.Add($"{asm.Name}.Autoredi");
+                var groups = GetAutorediGroups(compilation, asm);
+                result.Add(new ReferencedAssemblyAutorediInfo
+                {
+                    Namespace = $"{asm.Name}.Autoredi",
+                    Groups = groups
+                });
             }
 
             visitedAssemblies.Remove(asm.Name); // Allow re-visiting in other contexts
         }
 
-        return namespaces.Distinct().ToImmutableArray();
+        // De-duplicate based on Namespace
+        return result.GroupBy(x => x.Namespace)
+                     .Select(g => g.First())
+                     .ToImmutableArray();
     }
 
     private static bool HasAutorediAttributeOrNamespace(Compilation compilation, IAssemblySymbol assembly,
@@ -440,12 +552,106 @@ public sealed class AutorediGenerator : IIncrementalGenerator
         }
     }
 
+    private static string? ValidateGroupName(string groupName, Location location, SourceProductionContext context)
+    {
+        if (string.IsNullOrWhiteSpace(groupName))
+        {
+            return null; // Treat as Default group
+        }
+
+        // Check length
+        if (groupName.Length > 100)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                GroupNameTooLongDescriptor, location, groupName));
+            return null;
+        }
+
+        // Check valid C# identifier
+        if (!IsValidIdentifier(groupName))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                InvalidGroupNameDescriptor, location, groupName));
+            return null;
+        }
+
+        // Check against C# keywords
+        var keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
+            "checked", "class", "const", "continue", "decimal", "default", "delegate",
+            "do", "double", "else", "enum", "event", "explicit", "extern", "false",
+            "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit",
+            "in", "int", "interface", "internal", "is", "lock", "long", "namespace",
+            "new", "null", "object", "operator", "out", "override", "params", "private",
+            "protected", "public", "readonly", "ref", "return", "sbyte", "sealed",
+            "short", "sizeof", "stackalloc", "static", "string", "struct", "switch",
+            "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked",
+            "unsafe", "ushort", "using", "virtual", "void", "volatile", "while"
+        };
+
+        if (keywords.Contains(groupName))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                GroupNameIsKeywordDescriptor, location, groupName));
+            return null;
+        }
+
+        return groupName;
+    }
+
+    private static bool IsValidIdentifier(string identifier)
+    {
+        if (string.IsNullOrEmpty(identifier)) return false;
+
+        if (!char.IsLetter(identifier[0]) && identifier[0] != '_') return false;
+
+        for (int i = 1; i < identifier.Length; i++)
+        {
+            if (!char.IsLetterOrDigit(identifier[i]) && identifier[i] != '_') return false;
+        }
+
+        return true;
+    }
+
     private sealed record RegistrationInfo
     {
         public string ClassName { get; set; } = string.Empty;
         public int Lifetime { get; set; }
         public string? InterfaceName { get; set; }
         public string? ServiceKey { get; set; }
+        public string? Group { get; set; }
+        public int Priority { get; set; }
         public Location? Location { get; set; }
+    }
+
+    private sealed record ReferencedAssemblyAutorediInfo
+    {
+        public string Namespace { get; set; } = string.Empty;
+        public ImmutableArray<string> Groups { get; set; } = ImmutableArray<string>.Empty;
+    }
+
+    private static ImmutableArray<string> GetAutorediGroups(Compilation compilation, IAssemblySymbol assembly)
+    {
+        var autorediExtensionsType = compilation.GetTypeByMetadataName($"{assembly.Name}.Autoredi.AutorediExtensions");
+        if (autorediExtensionsType == null)
+        {
+            return ImmutableArray<string>.Empty;
+        }
+
+        var groups = new HashSet<string>();
+        foreach (var member in autorediExtensionsType.GetMembers())
+        {
+            if (member is IMethodSymbol method &&
+                method.IsStatic &&
+                method.Name.StartsWith("AddAutorediServices") &&
+                method.Name.Length > "AddAutorediServices".Length)
+            {
+                var groupName = method.Name.Substring("AddAutorediServices".Length);
+                groups.Add(groupName);
+            }
+        }
+
+        return groups.ToImmutableArray();
     }
 }

@@ -15,6 +15,8 @@ Autoredi is a powerful source generator for .NET that simplifies dependency inje
   - [Intermediate: Single Interface Implementation](#intermediate-single-interface-implementation)
   - [Advanced: Keyed Services for Multiple Implementations](#advanced-keyed-services-for-multiple-implementations)
   - [Complex: Controllers and Dynamic Resolution](#complex-controllers-and-dynamic-resolution)
+  - [Grouped Registration](#grouped-registration)
+  - [Priority Ordering](#priority-ordering)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -289,6 +291,63 @@ In this scenario:
 - Autoredi generates registrations for `MyController` and `GreetingManager` (`services.AddTransient<MyController>()`, etc.), integrating seamlessly with the keyed services.
 
 This demonstrates Autoredi’s flexibility in handling complex DI scenarios, from constructor injection to runtime service selection.
+
+### Grouped Registration
+
+For large applications, you can organize services into named groups for selective registration. This is useful for modularizing your DI setup or conditionally registering sets of services.
+
+```csharp
+// Group: "Firebase"
+[Autoredi(ServiceLifetime.Singleton, group: "Firebase")]
+public class FirebaseConfig { }
+
+[Autoredi(ServiceLifetime.Transient, group: "Firebase")]
+public class FirebaseRepository { }
+
+// Group: "Account"
+[Autoredi(ServiceLifetime.Scoped, group: "Account")]
+public class AccountService { }
+
+// No Group (Default)
+[Autoredi(ServiceLifetime.Transient)]
+public class GlobalService { }
+```
+
+**Usage:**
+
+```csharp
+var services = new ServiceCollection();
+
+// Option 1: Register EVERYTHING (Default behavior)
+services.AddAutorediServices();
+
+// Option 2: Selective Registration
+services.AddAutorediServicesFirebase(); // Registers only Firebase group
+services.AddAutorediServicesAccount();  // Registers only Account group
+services.AddAutorediServicesDefault();  // Registers ungrouped services
+```
+
+*Note: Group registration methods (e.g., `AddAutorediServicesFirebase`) automatically include services from the same group in referenced assemblies. Check the `samples/Samples.Modular` directory for a complete cross-project example.*
+
+### Priority Ordering
+
+You can control the order in which services are registered within their groups using the `priority` parameter. Higher values are registered first.
+
+```csharp
+// Priority 100: Registered first
+[Autoredi(ServiceLifetime.Singleton, priority: 100)]
+public class FirstService { }
+
+// Priority 50: Registered second
+[Autoredi(ServiceLifetime.Singleton, priority: 50)]
+public class SecondService { }
+
+// Default Priority (0): Registered last (in alphabetical order)
+[Autoredi(ServiceLifetime.Singleton)]
+public class LastService { }
+```
+
+Priorities are scoped to their group (or the default group). This is helpful when service registration order matters, such as when using decorators or the `TryAdd` pattern (though Autoredi always uses `Add`).
 
 ## Contributing
 

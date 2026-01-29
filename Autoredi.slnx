@@ -1,9 +1,4 @@
 <Solution>
-  <Configurations>
-    <Configuration Name="Debug" />
-    <Configuration Name="Release" />
-  </Configurations>
-
   <Folder Name="/src/">
     <Project Path="src/Autoredi/Autoredi.csproj" />
     <Project Path="src/Autoredi.Generators/Autoredi.Generators.csproj" />
@@ -19,6 +14,8 @@
     <Project Path="samples/Samples.SingleInterface/Samples.SingleInterface.csproj" />
     <Project Path="samples/Samples.KeyedServices/Samples.KeyedServices.csproj" />
     <Project Path="samples/Samples.Complete/Samples.Complete.csproj" />
+    <Project Path="samples/Samples.Modular.Infrastructure/Samples.Modular.Infrastructure.csproj" />
+    <Project Path="samples/Samples.Modular.App/Samples.Modular.App.csproj" />
   </Folder>
 
   <Folder Name="/benchmarks/">
