@@ -46,6 +46,15 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
+      - name: Add GitHub Packages source
+        run: |
+          dotnet nuget remove source github || true
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --name github \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --store-password-in-clear-text
+
       - name: Create SNK file from secret
         run: echo "${{ secrets.SNK_FILE_BASE64 }}" | base64 --decode > ${{ github.workspace }}/Autoredi.snk
 
@@ -56,10 +65,15 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
 
+      - name: Restore Projects
+        run: |
+          dotnet restore "${{ env.MAIN_PROJECT_FILE }}"
+          dotnet restore "${{ env.GENERATOR_PROJECT_FILE }}"
+
       - name: Build Projects
         run: |
-          dotnet build "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}"
-          dotnet build "${{ env.GENERATOR_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}"
+          dotnet build "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" --no-restore
+          dotnet build "${{ env.GENERATOR_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" --no-restore
 
       - name: Pack Projects
         run: |
