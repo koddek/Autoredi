@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Benchmarks (Release)",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "benchmarks/Autoredi.Benchmarks/Autoredi.Benchmarks.csproj",
+        "-c",
+        "Release"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Benchmarks (Release)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build Benchmarks (Release)",
+      "program": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/benchmarks/Autoredi.Benchmarks/Autoredi.Benchmarks.csproj",
+        "-c",
+        "Release"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ]
+}
