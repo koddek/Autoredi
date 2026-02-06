@@ -38,14 +38,19 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
+      - name: Ensure GitHub Packages token
+        if: secrets.GH_PACKAGES_TOKEN == ''
+        run: |
+          echo "Missing GH_PACKAGES_TOKEN (PAT with read:packages). Configure it in repo secrets."
+          exit 1
+
       - name: Add GitHub Packages source
-        if: github.event_name != 'pull_request'
         run: |
           dotnet nuget remove source github || true
           dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
             --name github \
             --username "${{ github.actor }}" \
-            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --password "${{ secrets.GH_PACKAGES_TOKEN }}" \
             --store-password-in-clear-text
 
       - name: Create SNK file from secret
