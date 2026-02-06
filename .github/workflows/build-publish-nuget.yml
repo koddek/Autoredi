@@ -12,14 +12,6 @@ on:
       - 'README.md'
       - 'LICENSE'
       - '.github/workflows/build-publish-nuget.yml'
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'Directory.Build.*'
-      - 'Autoredi.sln'
-      - 'README.md'
-      - 'LICENSE'
-      - '.github/workflows/build-publish-nuget.yml'
 
 env:
   MAIN_PROJECT_FILE: 'src/Autoredi/Autoredi.csproj'
@@ -47,6 +39,7 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Add GitHub Packages source
+        if: github.event_name != 'pull_request'
         run: |
           dotnet nuget remove source github || true
           dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
