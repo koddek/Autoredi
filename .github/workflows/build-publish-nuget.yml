@@ -39,7 +39,7 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Ensure GitHub Packages token
-        if: secrets.GH_PACKAGES_TOKEN == ''
+        if: ${{ secrets.GH_PACKAGES_TOKEN == '' }}
         run: |
           echo "Missing GH_PACKAGES_TOKEN (PAT with read:packages). Configure it in repo secrets."
           exit 1
