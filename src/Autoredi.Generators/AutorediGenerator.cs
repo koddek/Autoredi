@@ -8,7 +8,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        Flow.Create(context)
+        context.Flow()
             .ForAttributeWithMetadataName<ServiceRegistration>(Names.AutorediAttFullName)
             .Select(ServiceRegistrationExtractor.Extract)
             .Collect()
