@@ -5,11 +5,15 @@ namespace Autoredi.Generators.Extraction;
 /// </summary>
 internal static class ServiceRegistrationExtractor
 {
-    public static ServiceRegistration Extract(GeneratorAttributeSyntaxContext context, CancellationToken ct)
+    public static ServiceRegistration Extract(AttributeContext context, CancellationToken ct)
     {
-        var symbol = (INamedTypeSymbol)context.TargetSymbol;
-        var attribute = context.Attributes.FirstOrDefault();
+        ct.ThrowIfCancellationRequested();
+        if (context.TargetSymbol is not INamedTypeSymbol symbol)
+        {
+            return null!;
+        }
 
+        var attribute = context.Attribute;
         if (attribute == null)
         {
             return null!;
