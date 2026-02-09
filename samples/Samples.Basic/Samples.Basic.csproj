@@ -7,23 +7,10 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
-    <!-- Reference the main project -->
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Autoredi\Autoredi.csproj" />
-    </ItemGroup>
-
-    <!-- Reference the source generator project -->
-    <ItemGroup>
-        <ProjectReference
-            Include="..\..\src\Autoredi.Generators\Autoredi.Generators.csproj"
-            OutputItemType="Analyzer"
-            ReferenceOutputAssembly="false"
-        />
-    </ItemGroup>
-
-    <ItemGroup>
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
+        <PackageReference Include="Autoredi" Version="0.4.4" />
     </ItemGroup>
 
 </Project>
