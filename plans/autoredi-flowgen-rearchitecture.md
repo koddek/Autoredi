@@ -98,7 +98,7 @@ public static class AutorediExtensions
         // Calls all group methods
         services.AddAutorediServicesFirebase();
         services.AddAutorediServicesAccount();
-        services.AddAutorediServicesDefault();
+        services.AddAutorediServicesAutorediTests();
         return services;
     }
 

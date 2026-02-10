@@ -29,6 +29,6 @@ public class GroupingBenchmarks
     public void DefaultGroupOnly()
     {
         var services = new ServiceCollection();
-        services.AddAutorediServicesDefault();
+        services.AddAutorediServicesAutorediBenchmarks();
     }
 }

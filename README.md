@@ -324,8 +324,10 @@ services.AddAutorediServices();
 // Option 2: Selective Registration
 services.AddAutorediServicesFirebase(); // Registers only Firebase group
 services.AddAutorediServicesAccount();  // Registers only Account group
-services.AddAutorediServicesDefault();  // Registers ungrouped services
+services.AddAutorediServicesSamplesModularApp();  // Registers ungrouped services for this assembly
 ```
+
+Ungrouped registrations use `AddAutorediServices{AssemblyName}()` in PascalCase (for example, `Samples.Modular.App` becomes `AddAutorediServicesSamplesModularApp`).
 
 *Note: Group registration methods (e.g., `AddAutorediServicesFirebase`) automatically include services from the same group in referenced assemblies. Check the `samples/Samples.Modular` directory for a complete cross-project example.*
 

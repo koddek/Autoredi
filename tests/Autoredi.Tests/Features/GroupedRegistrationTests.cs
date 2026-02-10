@@ -46,13 +46,13 @@ public class GroupedRegistrationTests
     }
 
     [Test]
-    public async Task AddAutorediServicesDefault_OnlyRegistersUngroupedServices()
+    public async Task AddAutorediServicesAutorediTests_OnlyRegistersUngroupedServices()
     {
         // Arrange
         var services = new ServiceCollection();
 
         // Act
-        services.AddAutorediServicesDefault();
+        services.AddAutorediServicesAutorediTests();
         var provider = services.BuildServiceProvider();
 
         // Assert
