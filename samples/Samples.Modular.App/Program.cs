@@ -57,13 +57,23 @@ class Program
         var storageReg = registrations.FirstOrDefault(r => r.ImplementationType == typeof(DatabaseService));
         Console.WriteLine($"\nDatabaseService (Storage group) registered? {storageReg != null}");
 
-        // Register only app-local services (this assembly only)
-        Console.WriteLine("\nRegistering App services (current assembly only)...");
+        // Register default/ungrouped services for this assembly
+        Console.WriteLine("\nRegistering App default services (current assembly only)...");
         services.AddAutorediServices();
         
         var allRegs = services.ToList();
         storageReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(DatabaseService));
         var appReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(AppService));
+
+        Console.WriteLine($" - DatabaseService registered? {storageReg != null}");
+        Console.WriteLine($" - AppService registered? {appReg != null}");
+
+        Console.WriteLine("\nRegistering ALL services from this app assembly...");
+        services.AddAutorediServicesSamplesModularApp();
+
+        allRegs = services.ToList();
+        storageReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(DatabaseService));
+        appReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(AppService));
 
         Console.WriteLine($" - DatabaseService registered? {storageReg != null}");
         Console.WriteLine($" - AppService registered? {appReg != null}");

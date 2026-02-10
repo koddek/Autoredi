@@ -8,8 +8,8 @@ public static class AutorediAggregation
 {
     public static IServiceCollection AddAutorediServicesAll(this IServiceCollection services)
     {
-        AppAutoredi.AddAutorediServices(services);
-        InfrastructureAutoredi.AddAutorediServices(services);
+        AppAutoredi.AddAutorediServicesSamplesModularApp(services);
+        InfrastructureAutoredi.AddAutorediServicesSamplesModularInfrastructure(services);
 
         return services;
     }

@@ -46,13 +46,13 @@ public class GroupedRegistrationTests
     }
 
     [Test]
-    public async Task AddAutorediServicesAutorediTests_OnlyRegistersUngroupedServices()
+    public async Task AddAutorediServices_OnlyRegistersUngroupedServices()
     {
         // Arrange
         var services = new ServiceCollection();
 
         // Act
-        services.AddAutorediServicesAutorediTests();
+        services.AddAutorediServices();
         var provider = services.BuildServiceProvider();
 
         // Assert
@@ -64,13 +64,13 @@ public class GroupedRegistrationTests
     }
 
     [Test]
-    public async Task AddAutorediServices_RegistersAllGroups()
+    public async Task AddAutorediServicesAutorediTests_RegistersAllGroups()
     {
         // Arrange
         var services = new ServiceCollection();
 
         // Act
-        services.AddAutorediServices();
+        services.AddAutorediServicesAutorediTests();
         var provider = services.BuildServiceProvider();
 
         // Assert - All services available

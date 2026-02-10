@@ -318,16 +318,18 @@ public class GlobalService { }
 ```csharp
 var services = new ServiceCollection();
 
-// Option 1: Register EVERYTHING (Default behavior)
+// Option 1: Register the default (ungrouped) services for this assembly
 services.AddAutorediServices();
 
 // Option 2: Selective Registration
 services.AddAutorediServicesFirebase(); // Registers only Firebase group
 services.AddAutorediServicesAccount();  // Registers only Account group
-services.AddAutorediServicesSamplesModularApp();  // Registers ungrouped services for this assembly
+
+// Option 3: Register every service emitted from this assembly
+services.AddAutorediServicesSamplesModularApp();
 ```
 
-Ungrouped registrations use `AddAutorediServices{AssemblyName}()` in PascalCase (for example, `Samples.Modular.App` becomes `AddAutorediServicesSamplesModularApp`).
+`AddAutorediServices` handles the ungrouped services, while `AddAutorediServices{AssemblyName}` registers the full assembly.
 
 *Note: Group registration methods (e.g., `AddAutorediServicesFirebase`) automatically include services from the same group in referenced assemblies. Check the `samples/Samples.Modular` directory for a complete cross-project example.*
 

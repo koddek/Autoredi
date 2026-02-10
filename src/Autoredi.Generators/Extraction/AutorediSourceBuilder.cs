@@ -20,7 +20,7 @@ internal static class AutorediSourceBuilder
         builder.Class("public static", "AutorediServiceCollectionExtensions");
         builder.Block(b =>
         {
-            GenerateMainExtensionMethod(b, registrations);
+            GenerateDefaultServicesMethod(b, registrations);
 
             var groups = registrations
                 .Where(r => !string.IsNullOrEmpty(r.Group))
@@ -33,15 +33,36 @@ internal static class AutorediSourceBuilder
                 GenerateGroupExtensionMethod(b, registrations, group);
             }
 
-            GenerateAssemblyDefaultGroupExtensionMethod(b, registrations, assemblyName);
+            GenerateAssemblyWideServicesMethod(b, registrations, assemblyName);
         });
 
         return builder.ToString();
     }
 
-    private static void GenerateMainExtensionMethod(SourceBuilder builder, ImmutableArray<ServiceRegistration> registrations)
+    private static void GenerateDefaultServicesMethod(SourceBuilder builder, ImmutableArray<ServiceRegistration> registrations)
     {
         builder.Method("public static", "IServiceCollection", "AddAutorediServices", "this IServiceCollection services");
+        builder.Block(b =>
+        {
+            var defaultRegistrations = registrations
+                .Where(r => string.IsNullOrEmpty(r.Group))
+                .OrderByDescending(r => r.Priority)
+                .ThenBy(r => r.ImplementationType);
+
+            foreach (var reg in defaultRegistrations)
+            {
+                GenerateRegistration(b, reg);
+            }
+
+            b.Line("return services;");
+        });
+        builder.Line();
+    }
+
+    private static void GenerateAssemblyWideServicesMethod(SourceBuilder builder, ImmutableArray<ServiceRegistration> registrations, string assemblyName)
+    {
+        var assemblySuffix = ToIdentifierFragment(assemblyName);
+        builder.Method("public static", "IServiceCollection", $"AddAutorediServices{assemblySuffix}", "this IServiceCollection services");
         builder.Block(b =>
         {
             var orderedRegistrations = registrations
@@ -76,26 +97,6 @@ internal static class AutorediSourceBuilder
             b.Line("return services;");
         });
         builder.Line();
-    }
-
-    private static void GenerateAssemblyDefaultGroupExtensionMethod(SourceBuilder builder, ImmutableArray<ServiceRegistration> registrations, string assemblyName)
-    {
-        var assemblySuffix = ToIdentifierFragment(assemblyName);
-        builder.Method("public static", "IServiceCollection", $"AddAutorediServices{assemblySuffix}", "this IServiceCollection services");
-        builder.Block(b =>
-        {
-            var defaultRegistrations = registrations
-                .Where(r => string.IsNullOrEmpty(r.Group))
-                .OrderByDescending(r => r.Priority)
-                .ThenBy(r => r.ImplementationType);
-
-            foreach (var reg in defaultRegistrations)
-            {
-                GenerateRegistration(b, reg);
-            }
-
-            b.Line("return services;");
-        });
     }
 
     private static string ToIdentifierFragment(string value)

@@ -6,9 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **Group Property**: Organize services into logical groups with selective registration.
-  - `AddAutorediServices()` still registers all services (backward compatible).
-  - New group-specific methods: `AddAutorediServicesFirebase()`, `AddAutorediServicesAccount()`, etc.
-  - Services without a group go to `AddAutorediServices{AssemblyName}()` in PascalCase (for example, `Samples.Modular.App` becomes `AddAutorediServicesSamplesModularApp`).
+    - `AddAutorediServices()` registers only the default (ungrouped) services.
+    - New group-specific methods: `AddAutorediServicesFirebase()`, `AddAutorediServicesAccount()`, etc.
+    - `AddAutorediServices{AssemblyName}()` registers every service that assembly contributes (e.g., `Samples.Modular.App` becomes `AddAutorediServicesSamplesModularApp`).
   - Global aggregation: Group methods automatically include services from the same group in referenced assemblies.
 - **Priority Property**: Control registration order within groups using `priority` (int).
   - Higher values are registered first (e.g., 100 before 0).
