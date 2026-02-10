@@ -92,13 +92,20 @@ Autoredi generates code like this:
 ```csharp
 public static class AutorediExtensions
 {
-    // Aggregates ALL services into one method
+    // Registers only the ungrouped services
     public static IServiceCollection AddAutorediServices(this IServiceCollection services)
     {
-        // Calls all group methods
+        services.AddSingleton<DefaultService>();
+        return services;
+    }
+
+    // Aggregates ALL services into one method associated with this assembly
+    public static IServiceCollection AddAutorediServicesAutorediTests(this IServiceCollection services)
+    {
+        // Calls the default helper and each group helper
+        services.AddAutorediServices();
         services.AddAutorediServicesFirebase();
         services.AddAutorediServicesAccount();
-        services.AddAutorediServicesAutorediTests();
         return services;
     }
 

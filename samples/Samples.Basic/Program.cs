@@ -18,7 +18,7 @@ class Program
         var services = new ServiceCollection();
 
         // 2. Register all Autoredi services (generated extension method)
-        services.AddAutorediServices();
+        services.AddAutorediServicesSamplesBasic();
 
         // 3. Build service provider
         var serviceProvider = services.BuildServiceProvider();
