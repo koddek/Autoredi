@@ -10,7 +10,7 @@
     <ItemGroup>
         <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
         <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
-        <PackageReference Include="Autoredi" Version="0.4.8" />
+        <PackageReference Include="Autoredi" Version="0.4.9" />
     </ItemGroup>
 
 </Project>
