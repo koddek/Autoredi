@@ -22,7 +22,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
                 // The consumer projects follow [AssemblyName].Autoredi pattern.
                 var targetNamespace = registrations[0].AssemblyName + ".Autoredi";
 
-                var source = AutorediSourceBuilder.Generate(registrations, targetNamespace);
+                var source = AutorediSourceBuilder.Generate(registrations, targetNamespace, registrations[0].AssemblyName);
                 spc.AddSource("AutorediServices.g.cs", source);
             })
             .Build()
