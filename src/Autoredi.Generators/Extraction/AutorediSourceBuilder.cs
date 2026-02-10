@@ -41,6 +41,7 @@ internal static class AutorediSourceBuilder
 
     private static void GenerateDefaultServicesMethod(SourceBuilder builder, ImmutableArray<ServiceRegistration> registrations)
     {
+        GenerateDefaultServicesDocComment(builder);
         builder.Method("public static", "IServiceCollection", "AddAutorediServices", "this IServiceCollection services");
         builder.Block(b =>
         {
@@ -61,6 +62,7 @@ internal static class AutorediSourceBuilder
 
     private static void GenerateAssemblyWideServicesMethod(SourceBuilder builder, ImmutableArray<ServiceRegistration> registrations, string assemblyName)
     {
+        GenerateFullAssemblyServicesDocComment(builder, assemblyName);
         var assemblySuffix = ToIdentifierFragment(assemblyName);
         builder.Method("public static", "IServiceCollection", $"AddAutorediServices{assemblySuffix}", "this IServiceCollection services");
         builder.Block(b =>
@@ -97,6 +99,21 @@ internal static class AutorediSourceBuilder
             b.Line("return services;");
         });
         builder.Line();
+    }
+
+    private static void GenerateDefaultServicesDocComment(SourceBuilder builder)
+    {
+        builder.Line("/// <summary>");
+        builder.Line("/// Registers the default (ungrouped) Autoredi services from this assembly.");
+        builder.Line("/// </summary>");
+        builder.Line("/// <remarks>If no groups are defined, this method registers every service emitted by the assembly.</remarks>");
+    }
+
+    private static void GenerateFullAssemblyServicesDocComment(SourceBuilder builder, string assemblyName)
+    {
+        builder.Line("/// <summary>");
+        builder.Line($"/// Registers every Autoredi service emitted by {assemblyName} (all groups included).");
+        builder.Line("/// </summary>");
     }
 
     private static string ToIdentifierFragment(string value)
