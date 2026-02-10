@@ -52,6 +52,12 @@ internal static class AutorediAllServicesSource
             return null;
         }
 
+        if (compilation.Options.OutputKind == OutputKind.DynamicallyLinkedLibrary ||
+            compilation.Options.OutputKind == OutputKind.NetModule)
+        {
+            return null;
+        }
+
         var assemblyNames = GetAssembliesWithAutoredi(compilation, attributeSymbol);
         if (assemblyNames.Count == 0)
         {
