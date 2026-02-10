@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
     - `AddAutorediServices()` registers only the default (ungrouped) services.
     - New group-specific methods: `AddAutorediServicesFirebase()`, `AddAutorediServicesAccount()`, etc.
     - `AddAutorediServices{AssemblyName}()` registers every service that assembly contributes (e.g., `Samples.Modular.App` becomes `AddAutorediServicesSamplesModularApp`).
+    - `AddAutorediServicesAll()` registers services from this assembly and any referenced assemblies that define Autoredi registrations.
   - Global aggregation: Group methods automatically include services from the same group in referenced assemblies.
 - **Priority Property**: Control registration order within groups using `priority` (int).
   - Higher values are registered first (e.g., 100 before 0).
