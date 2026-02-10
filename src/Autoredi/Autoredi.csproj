@@ -3,7 +3,7 @@
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <PackageId>Autoredi</PackageId>
-        <Version>0.4.8</Version>
+        <Version>0.4.9</Version>
         <IsPackable>true</IsPackable>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     </PropertyGroup>

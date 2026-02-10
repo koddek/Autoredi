@@ -80,6 +80,22 @@ public class GroupedRegistrationTests
     }
 
     [Test]
+    public async Task AddAutorediServicesAll_RegistersAllGroups()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+
+        // Act
+        services.AddAutorediServicesAll();
+        var provider = services.BuildServiceProvider();
+
+        // Assert - All services available
+        await Assert.That(provider.GetService<FirebaseConfig>()).IsNotNull();
+        await Assert.That(provider.GetService<AccountService>()).IsNotNull();
+        await Assert.That(provider.GetService<DefaultService>()).IsNotNull();
+    }
+
+    [Test]
     public async Task Priority_RegistersServicesInDescendingOrder()
     {
         // We verify order by inspecting the ServiceCollection directly.

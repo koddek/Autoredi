@@ -9,6 +9,7 @@
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <AnalyzerReleaseTracking>Enabled</AnalyzerReleaseTracking>
+        <NoWarn>$(NoWarn);CS8002</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>

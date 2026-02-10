@@ -327,6 +327,9 @@ services.AddAutorediServicesAccount();  // Registers only Account group
 
 // Option 3: Register every service emitted from this assembly
 services.AddAutorediServicesSamplesModularApp();
+
+// Option 4: Register all services from this assembly and referenced assemblies that define Autoredi registrations
+services.AddAutorediServicesAll();
 ```
 
 `AddAutorediServices` handles the ungrouped services, while `AddAutorediServices{AssemblyName}` registers the full assembly.
