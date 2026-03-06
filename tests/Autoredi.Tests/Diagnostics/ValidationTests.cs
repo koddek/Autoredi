@@ -135,7 +135,7 @@ public class ValidationTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        services.AddSingleton<Func<string, ITestMessageSender>>(sp => key =>
+        services.AddSingleton<Func<string, ITestMessageSender?>>(sp => key =>
             sp.GetKeyedService<ITestMessageSender>(key));
         var provider = services.BuildServiceProvider();
 

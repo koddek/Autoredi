@@ -118,9 +118,9 @@ public static class TestServices
     [Autoredi]
     public class TestMessageOrchestrator
     {
-        private readonly Func<string, ITestMessageSender> _resolver;
+        private readonly Func<string, ITestMessageSender?> _resolver;
 
-        public TestMessageOrchestrator(Func<string, ITestMessageSender> resolver)
+        public TestMessageOrchestrator(Func<string, ITestMessageSender?> resolver)
         {
             _resolver = resolver;
         }
