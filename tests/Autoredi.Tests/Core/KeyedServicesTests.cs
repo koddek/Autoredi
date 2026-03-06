@@ -69,6 +69,7 @@ public class KeyedServicesTests
 
         // Act
         var sender = provider.GetKeyedService<ITestMessageSender>(key);
+        await Assert.That(sender).IsNotNull();
         sender.Send("Test message");
 
         // Assert

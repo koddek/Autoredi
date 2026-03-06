@@ -8,7 +8,7 @@ public class MessageOrchestratorTests
     {
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        services.AddSingleton<Func<string, ITestMessageSender>>(sp => key =>
+        services.AddSingleton<Func<string, ITestMessageSender?>>(sp => key =>
             sp.GetKeyedService<ITestMessageSender>(key));
         _serviceProvider = services.BuildServiceProvider();
     }
@@ -35,7 +35,7 @@ public class MessageOrchestratorTests
         var services = new ServiceCollection();
         services.AddAutorediServices();
         services.AddKeyedSingleton<ITestMessageSender>(key, mockSender);
-        services.AddSingleton<Func<string, ITestMessageSender>>(sp => k =>
+        services.AddSingleton<Func<string, ITestMessageSender?>>(sp => k =>
             sp.GetKeyedService<ITestMessageSender>(k));
         var provider = services.BuildServiceProvider();
         var orchestrator = provider.GetRequiredService<TestServices.TestMessageOrchestrator>();
@@ -97,7 +97,7 @@ public class MessageOrchestratorTests
         services.AddAutorediServices();
         services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.Email, emailMock);
         services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.SMS, smsMock);
-        services.AddSingleton<Func<string, ITestMessageSender>>(sp => key =>
+        services.AddSingleton<Func<string, ITestMessageSender?>>(sp => key =>
             sp.GetKeyedService<ITestMessageSender>(key));
         var provider = services.BuildServiceProvider();
         var orchestrator = provider.GetRequiredService<TestServices.TestMessageOrchestrator>();

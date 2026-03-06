@@ -3,7 +3,7 @@
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <PackageId>Autoredi</PackageId>
-        <Version>0.4.10</Version>
+        <Version>0.4.11</Version>
         <IsPackable>true</IsPackable>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     </PropertyGroup>
@@ -12,7 +12,6 @@
         <ProjectReference Include="..\Autoredi.Generators\Autoredi.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
         <None Include="$(MSBuildProjectDirectory)\..\Autoredi.Generators\bin\$(Configuration)\netstandard2.0\Autoredi.Generators.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
         <None Include="$(PkgFlowgen)\lib\netstandard2.0\Flowgen.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
-        <None Include="$(PkgMicrosoft_Extensions_DependencyInjection_Abstractions)\lib\netstandard2.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
     </ItemGroup>
 
     <ItemGroup>
@@ -20,8 +19,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
-      <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" GeneratePathProperty="true" />
+      <PackageReference Remove="Microsoft.Extensions.DependencyInjection" />
+      <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
       <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.102" />
     </ItemGroup>
 

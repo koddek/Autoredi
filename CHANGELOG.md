@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.11] - 2026-03-06
+
+### Fixed
+- Stopped shipping `Microsoft.Extensions.DependencyInjection.Abstractions.dll` inside the NuGet `analyzers/dotnet/cs` folder.
+- Trimmed package dependencies so the main library only depends on `Microsoft.Extensions.DependencyInjection.Abstractions`.
+
 ## [0.2.0] - 2026-01-28
 
 ### Added
