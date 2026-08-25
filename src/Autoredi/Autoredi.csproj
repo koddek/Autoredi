@@ -15,6 +15,12 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- Agent skill travels with the package so coding agents can discover usage guidance
+             at ~/.nuget/packages/autoredi/<version>/skills/Autoredi/SKILL.md -->
+        <None Include="..\..\docs\skills\autoredi\SKILL.md" Pack="true" PackagePath="skills/Autoredi" Visible="false" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Flowgen" Version="0.7.0" GeneratePathProperty="true" PrivateAssets="all" />
     </ItemGroup>
 

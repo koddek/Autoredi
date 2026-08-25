@@ -79,6 +79,7 @@ internal static class AutorediSourceBuilder
                 continue;
             }
 
+            GenerateGroupDocComment(builder, raw);
             builder.Method("public static", "IServiceCollection", $"{MethodPrefix}{fragment}", "this IServiceCollection services");
             builder.Block(b =>
             {
@@ -204,17 +205,40 @@ internal static class AutorediSourceBuilder
     private static void GenerateDefaultServicesDocComment(SourceBuilder builder)
     {
         builder.Line("/// <summary>");
-        builder.Line($"/// Registers the default (ungrouped) Autoredi services from this assembly using TryAdd semantics.");
-        builder.Line("/// Existing registrations are never overridden.");
+        builder.Line("/// Registers the default (ungrouped) Autoredi services from this assembly using TryAdd semantics.");
         builder.Line("/// </summary>");
-        builder.Line("/// <remarks>If no groups are defined, this method registers every service emitted by the assembly.</remarks>");
+        builder.Line("/// <remarks>");
+        builder.Line("/// If no groups are defined in this assembly, this method registers every service emitted by the assembly.");
+        builder.Line("/// Existing registrations are never overridden, and calling this method more than once adds no duplicates.");
+        builder.Line("/// </remarks>");
+        builder.Line($"/// <param name=\"services\">The <see cref=\"global::Microsoft.Extensions.DependencyInjection.IServiceCollection\"/> to add registrations to.</param>");
+        builder.Line("/// <returns>The same <paramref name=\"services\"/> instance, for chaining.</returns>");
+    }
+
+    private static void GenerateGroupDocComment(SourceBuilder builder, string group)
+    {
+        builder.Line("/// <summary>");
+        builder.Line($"/// Registers the '{group}' Autoredi group from this assembly using TryAdd semantics.");
+        builder.Line("/// </summary>");
+        builder.Line("/// <remarks>");
+        builder.Line("/// Only classes attributed with this group name are registered. Existing registrations");
+        builder.Line("/// are never overridden, and calling this method more than once adds no duplicates.");
+        builder.Line("/// </remarks>");
+        builder.Line($"/// <param name=\"services\">The <see cref=\"global::Microsoft.Extensions.DependencyInjection.IServiceCollection\"/> to add registrations to.</param>");
+        builder.Line("/// <returns>The same <paramref name=\"services\"/> instance, for chaining.</returns>");
     }
 
     private static void GenerateFullAssemblyServicesDocComment(SourceBuilder builder, string assemblyName)
     {
         builder.Line("/// <summary>");
         builder.Line($"/// Registers every Autoredi service emitted by {assemblyName} (all groups included) using TryAdd semantics.");
-        builder.Line("/// Existing registrations are never overridden.");
         builder.Line("/// </summary>");
+        builder.Line("/// <remarks>");
+        builder.Line("/// Equivalent to calling the default method plus every group method of this assembly.");
+        builder.Line("/// Existing registrations are never overridden, and calling this method more than once adds no duplicates.");
+        builder.Line("/// To include referenced assemblies as well, use <c>AddAutorediServicesAll</c> (executables only).");
+        builder.Line("/// </remarks>");
+        builder.Line($"/// <param name=\"services\">The <see cref=\"global::Microsoft.Extensions.DependencyInjection.IServiceCollection\"/> to add registrations to.</param>");
+        builder.Line("/// <returns>The same <paramref name=\"services\"/> instance, for chaining.</returns>");
     }
 }

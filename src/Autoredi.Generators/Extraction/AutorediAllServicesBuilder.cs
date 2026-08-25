@@ -34,7 +34,15 @@ internal static class AutorediAllServicesBuilder
     private static void GenerateAllServicesDocComment(SourceBuilder builder)
     {
         builder.Line("/// <summary>");
-        builder.Line("/// Registers all Autoredi services from this assembly and any referenced assemblies that define Autoredi registrations.");
+        builder.Line("/// Registers all Autoredi services from this assembly and every referenced assembly that contributes Autoredi registrations.");
         builder.Line("/// </summary>");
+        builder.Line("/// <remarks>");
+        builder.Line("/// Delegates to each contributing assembly's generated extension method, preserving that");
+        builder.Line("/// assembly's emission order (current assembly first, then referenced assemblies alphabetically).");
+        builder.Line("/// Emitted only for executable projects. Existing registrations are never overridden, and calling");
+        builder.Line("/// this method more than once adds no duplicates.");
+        builder.Line("/// </remarks>");
+        builder.Line("/// <param name=\"services\">The <see cref=\"global::Microsoft.Extensions.DependencyInjection.IServiceCollection\"/> to add registrations to.</param>");
+        builder.Line("/// <returns>The same <paramref name=\"services\"/> instance, for chaining.</returns>");
     }
 }

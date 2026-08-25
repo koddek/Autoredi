@@ -15,9 +15,12 @@ Autoredi is a powerful source generator for .NET that simplifies dependency inje
   - [Intermediate: Single Interface Implementation](#intermediate-single-interface-implementation)
   - [Advanced: Keyed Services for Multiple Implementations](#advanced-keyed-services-for-multiple-implementations)
   - [Complex: Controllers and Dynamic Resolution](#complex-controllers-and-dynamic-resolution)
-  - [Grouped Registration](#grouped-registration)
+- [Grouped Registration](#grouped-registration)
   - [Priority Ordering](#priority-ordering)
   - [Multiple Interfaces](#multiple-interfaces)
+- [Generated API Reference](#generated-api-reference)
+- [Compile-Time Diagnostics](#compile-time-diagnostics)
+- [Agent Guidance](#agent-guidance)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -41,7 +44,7 @@ Your project should target .NET 10.0 or a compatible framework. For example:
 
 Autoredi makes dependency injection effortless by generating DI registration code based on the `[Autoredi]` attribute. Let’s explore how to use Autoredi through a story that starts with a simple configuration service and evolves into a sophisticated notification system with controllers and dynamic service resolution.
 
-**TryAdd semantics:** all generated registrations use `TryAdd*` / `TryAddEnumerable`, so they fill gaps and never override services you registered manually before calling them. Calling a generated method twice is safe and adds no duplicates.
+**TryAdd semantics:** all generated registrations fill gaps and never override services you registered manually before calling them. Calling a generated method twice is safe and adds no duplicates. Single-implementation service types emit `services.TryAdd(ServiceDescriptor.*)`; interfaces with multiple implementations emit `services.TryAddEnumerable(ServiceDescriptor.*)` so every implementation stays resolvable via `IEnumerable<T>`.
 
 ### Simple: Registering a Concrete Service
 
@@ -373,14 +376,55 @@ One attribute can register a class against several interfaces. When `InterfaceTy
 public class RedisStore : IRepo, ICache { }
 ```
 
-Generates one descriptor per interface:
+Generates one descriptor per interface. When RedisStore is the only implementation of each interface, the descriptors use plain `TryAdd`; a second class implementing either interface flips that interface's registrations to `TryAddEnumerable` so both stay resolvable:
 
 ```csharp
-services.TryAddEnumerable(ServiceDescriptor.Scoped<IRepo, RedisStore>());
-services.TryAddEnumerable(ServiceDescriptor.Scoped<ICache, RedisStore>());
+services.TryAdd(ServiceDescriptor.Scoped<IRepo, RedisStore>());
+services.TryAdd(ServiceDescriptor.Scoped<ICache, RedisStore>());
 ```
 
 Each entry must be an interface implemented by the decorated class; otherwise the generator reports an error at compile time instead of producing broken code.
+
+## Generated API Reference
+
+For an assembly named `MyApp`, the generator emits:
+
+```csharp
+namespace MyApp.Autoredi;
+
+public static partial class AutorediServiceCollectionExtensions
+{
+    public static IServiceCollection AddAutorediServices(this IServiceCollection services);
+    public static IServiceCollection AddAutorediServices{Group}(this IServiceCollection services);   // per group
+    public static IServiceCollection AddAutorediServicesMyApp(this IServiceCollection services);      // all groups of this assembly
+    // Executables additionally emit:
+    public static IServiceCollection AddAutorediServicesAll(this IServiceCollection services);
+}
+```
+
+Every method returns the same `IServiceCollection` for chaining and carries full XML documentation (visible via IntelliSense). Remember the `using MyApp.Autoredi;`.
+
+## Compile-Time Diagnostics
+
+The generator validates attribute usage instead of emitting broken code:
+
+| Id | Severity | Meaning | Fix |
+|---|---|---|---|
+| AUTOREDI007 | Error | Class does not implement the requested interface | Implement it or remove `interfaceType`/entry |
+| AUTOREDI010 | Error | Invalid `ServiceLifetime` value | Use Transient (0), Scoped (1), or Singleton (2) |
+| AUTOREDI011 | Error | Requested service type is not an interface (or null) | Pass an interface type |
+| AUTOREDI018 | Warning | Group name is not a valid C# identifier | None required; method generated from sanitized name (`"my-group"` → `AddAutorediServicesMyGroup`) |
+| AUTOREDI023 | Error | Generated method name collision (`"All"` reserved, group vs assembly fragment, duplicate fragments) | Rename one side; colliding registrations are skipped until resolved |
+
+## Agent Guidance
+
+Autoredi ships with a coding-agent skill inside the NuGet package. After installing the package, point your agent at:
+
+```
+~/.nuget/packages/autoredi/<version>/skills/Autoredi/SKILL.md
+```
+
+It covers the attribute surface, generated-method map, TryAdd contract, diagnostics table, and common pitfalls in a form optimized for AI coding assistants (opencode/Claude Code style SKILL.md frontmatter).
 
 ## Contributing
 

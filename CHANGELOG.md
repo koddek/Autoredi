@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Agent skill ships in the package**: `skills/Autoredi/SKILL.md` inside the nupkg gives AI coding agents (opencode, Claude Code, etc.) usage guidance; discoverable at `~/.nuget/packages/autoredi/<version>/skills/Autoredi/SKILL.md`.
+- **Full XML documentation**: `AutorediAttribute` and every generated extension method now carry complete `<summary>`/`<remarks>`/`<example>` docs, visible through IntelliSense and doc generators.
 - **Multi-interface registration**: `[Autoredi(..., InterfaceTypes = [typeof(A), typeof(B)])]` emits one descriptor per interface. Explicit interface list means interfaces-only (no self registration), matching the single `interfaceType` contract.
 - **Compile-time diagnostics** (generator now validates instead of emitting broken code):
     - AUTOREDI007 error: decorated class does not implement the requested interface.
