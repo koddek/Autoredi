@@ -1,94 +1,121 @@
 using Autoredi.Attributes;
 using Microsoft.Extensions.DependencyInjection;
+using Samples.Common.Interfaces;
 using Samples.Modular.App.Autoredi;
 using Samples.Modular.Infrastructure.Services;
+// Same generated class name in both assemblies, so alias the referenced one for static calls.
+using InfrastructureAutoredi = Samples.Modular.Infrastructure.Autoredi.AutorediServiceCollectionExtensions;
 
 namespace Samples.Modular.App;
 
-[Autoredi(ServiceLifetime.Singleton, group: "Firebase", priority: 1)]
-public class LocalFirebaseConfig
+// --- App-local services ---
+
+public interface IAudit
 {
-    public string Name => "Local App Firebase";
+    string Trail();
+}
+
+public interface ITelemetry
+{
+    string Signal();
+}
+
+/// <summary>
+/// Demonstrates multi-interface registration: one attribute fans out to
+/// one TryAddEnumerable descriptor per interface.
+/// </summary>
+[Autoredi(ServiceLifetime.Singleton, InterfaceTypes = [typeof(IAudit), typeof(ITelemetry)])]
+public class CompositeAuditor : IAudit, ITelemetry
+{
+    public string Trail() => "audit-ok";
+    public string Signal() => "telemetry-ok";
 }
 
 [Autoredi(ServiceLifetime.Transient)]
-public class AppService
+public class AppGreeter
 {
-    public string Message => "Hello from Modular App!";
+    public string Greet() => "hello from Modular.App";
 }
+
+public enum Channel
+{
+    Email,
+    Push
+}
+
+[Autoredi(ServiceLifetime.Singleton, typeof(INotificationService), "app-email", group: "Notify")]
+public class AppEmailNotificationService : INotificationService
+{
+    public string Channel => "Email";
+    public void Send(string message) => Console.WriteLine($"  [EMAIL] {message}");
+}
+
+public static class Keys
+{
+    public const string Push = "push";
+}
+
+// --- Program ---
 
 class Program
 {
     static void Main(string[] args)
     {
-        Console.WriteLine("=== Autoredi Modular Sample ===\n");
+        Console.WriteLine("=== Autoredi Modular Demo ===");
+        Console.WriteLine("Demonstrates cross-assembly aggregation, selective groups,\nmulti-interface registration, and keyed services.\n");
 
-        var services = new ServiceCollection();
+        SelectiveRegistration();
 
-        // Selective registration of the "Firebase" group.
-        Console.WriteLine("Registering 'Firebase' group...");
-        services.AddAutorediServicesFirebase();
+        AllAssembliesRegistration();
 
-        // Verify registrations in IServiceCollection
-        Console.WriteLine("\nChecking IServiceCollection for Firebase registrations:");
-        var registrations = services.ToList();
-        
-        var firebaseCore = registrations.FirstOrDefault(r => r.ImplementationType == typeof(FirebaseCore));
-        var localConfig = registrations.FirstOrDefault(r => r.ImplementationType == typeof(LocalFirebaseConfig));
+        Console.WriteLine("=== Demo Complete ===");
+    }
 
-        Console.WriteLine($" - FirebaseCore registered? {firebaseCore != null}");
-        Console.WriteLine($" - LocalFirebaseConfig registered? {localConfig != null}");
-
-        if (firebaseCore != null && localConfig != null)
+    private static void SelectiveRegistration()
+    {
+        Console.WriteLine("-- Selective: app defaults + Infrastructure 'Storage' group --");
+        using var provider = CreateProvider(services =>
         {
-            var coreIndex = registrations.IndexOf(firebaseCore);
-            var localIndex = registrations.IndexOf(localConfig);
-            Console.WriteLine($"\nRegistration Order (within Firebase group):");
-            Console.WriteLine($" 1. {firebaseCore.ImplementationType?.Name} (Index: {coreIndex}, Priority: 100)");
-            Console.WriteLine($" 2. {localConfig.ImplementationType?.Name} (Index: {localIndex}, Priority: 1)");
-            
-            if (coreIndex < localIndex)
-                Console.WriteLine(" >> SUCCESS: High priority service registered first!");
-            else
-                Console.WriteLine(" >> FAILURE: Priority ordering not respected.");
-        }
+            // App assembly, default (ungrouped) services only.
+            services.AddAutorediServices();
 
-        // Verify that "Storage" group from Infrastructure is NOT registered yet
-        var storageReg = registrations.FirstOrDefault(r => r.ImplementationType == typeof(DatabaseService));
-        Console.WriteLine($"\nDatabaseService (Storage group) registered? {storageReg != null}");
+            // Referenced assembly, one group only. Same generated class name,
+            // different namespace, so call it statically via the alias above.
+            InfrastructureAutoredi.AddAutorediServicesStorage(services);
+        });
 
-        // Register default/ungrouped services for this assembly
-        Console.WriteLine("\nRegistering App default services (current assembly only)...");
-        services.AddAutorediServices();
-        
-        var allRegs = services.ToList();
-        storageReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(DatabaseService));
-        var appReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(AppService));
+        Report(provider);
+    }
 
-        Console.WriteLine($" - DatabaseService registered? {storageReg != null}");
-        Console.WriteLine($" - AppService registered? {appReg != null}");
+    private static void AllAssembliesRegistration()
+    {
+        Console.WriteLine("\n-- AddAutorediServicesAll: every registration from app + referenced assemblies --");
+        using var provider = CreateProvider(services => services.AddAutorediServicesAll());
 
-        Console.WriteLine("\nRegistering ALL services from this app assembly...");
-        services.AddAutorediServicesSamplesModularApp();
+        Report(provider);
 
-        allRegs = services.ToList();
-        storageReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(DatabaseService));
-        appReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(AppService));
+        var notifier = provider.GetKeyedService<INotificationService>("app-email");
+        notifier?.Send("keyed resolution across the aggregate");
 
-        Console.WriteLine($" - DatabaseService registered? {storageReg != null}");
-        Console.WriteLine($" - AppService registered? {appReg != null}");
+        // Double-call is safe under TryAdd semantics: same descriptor count as one call.
+        var once = new ServiceCollection().AddAutorediServicesAll();
+        var twice = new ServiceCollection().AddAutorediServicesAll().AddAutorediServicesAll();
+        Console.WriteLine($"\nDouble-call idempotent: {once.Count == twice.Count} ({once.Count} descriptors both times)");
+    }
 
-        // Aggregate registrations across referenced assemblies
-        Console.WriteLine("\nRegistering ALL services across modules...");
-        services.AddAutorediServicesAll();
+    private static ServiceProvider CreateProvider(Action<IServiceCollection> configure)
+    {
+        var services = new ServiceCollection();
+        configure(services);
+        return services.BuildServiceProvider();
+    }
 
-        allRegs = services.ToList();
-        storageReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(DatabaseService));
-        appReg = allRegs.FirstOrDefault(r => r.ImplementationType == typeof(AppService));
-
-        Console.WriteLine($" - DatabaseService registered? {storageReg != null}");
-        Console.WriteLine($" - AppService registered? {appReg != null}");
-
-        Console.WriteLine("\n=== Modular Sample Complete ===");
+    private static void Report(ServiceProvider provider)
+    {
+        Console.WriteLine($"  IAudit      -> {provider.GetService<IAudit>()?.Trail()}");
+        Console.WriteLine($"  ITelemetry  -> {provider.GetService<ITelemetry>()?.Signal()}");
+        Console.WriteLine($"  AppGreeter  -> {provider.GetService<AppGreeter>()?.Greet()}");
+        Console.WriteLine($"  DatabaseService (Storage group) -> {provider.GetService<DatabaseService>()?.Status ?? "NOT REGISTERED"}");
+        Console.WriteLine($"  FirebaseCore (excluded here) -> {(provider.GetService<FirebaseCore>() is null ? "not registered" : "registered")}");
     }
 }
