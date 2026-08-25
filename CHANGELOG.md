@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.5.0] - 2026-08-25
 
 ### Added
 - **Agent skill ships in the package**: `skills/Autoredi/SKILL.md` inside the nupkg gives AI coding agents (opencode, Claude Code, etc.) usage guidance; discoverable at `~/.nuget/packages/autoredi/<version>/skills/Autoredi/SKILL.md`.
