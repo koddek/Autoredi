@@ -10,4 +10,10 @@
     <ProjectReference Include="../../src/Autoredi/Autoredi.csproj" />
     <ProjectReference Include="../../src/Autoredi.Generators/Autoredi.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+    <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.400" />
+  </ItemGroup>
 </Project>
