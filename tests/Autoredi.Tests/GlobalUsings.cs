@@ -6,4 +6,4 @@ global using Autoredi.Tests.Core;
 global using Autoredi.Tests.Integration;
 global using Autoredi.Tests.Diagnostics;
 global using Microsoft.Extensions.DependencyInjection;
-global using NSubstitute;
+global using Imposter.Abstractions;

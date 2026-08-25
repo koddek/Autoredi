@@ -39,10 +39,10 @@ public class MessageControllerTests
     public async Task MessageControllerSendMessage_CallsSmsSender_WhenInvoked()
     {
         // Arrange
-        var mockSender = Substitute.For<ITestMessageSender>();
+        var imposter = ITestMessageSender.Imposter();
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.SMS, mockSender);
+        services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.SMS, imposter.Instance());
         var provider = services.BuildServiceProvider();
         var controller = provider.GetRequiredService<TestServices.TestMessageController>();
 
@@ -50,8 +50,8 @@ public class MessageControllerTests
         controller.SendMessage("Test message");
 
         // Assert
-        await Assert.That(mockSender.ReceivedCalls()).Count().IsEqualTo(1);
-        mockSender.Received().Send("Test message");
+        imposter.Send(Arg<string>.Any()).Called(Count.Once());
+        imposter.Send("Test message").Called(Count.Once());
     }
 
     [Test]

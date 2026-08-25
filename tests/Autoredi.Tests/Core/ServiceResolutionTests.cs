@@ -39,9 +39,9 @@ public class ServiceResolutionTests
     public async Task ResolveService_CanInvokeMethod_WhenServiceIsValid()
     {
         // Arrange
-        var mockService = Substitute.For<ITestLogService>();
+        var imposter = ITestLogService.Imposter();
         var services = new ServiceCollection();
-        services.AddSingleton<ITestLogService>(mockService);
+        services.AddSingleton<ITestLogService>(imposter.Instance());
         var provider = services.BuildServiceProvider();
 
         // Act
@@ -49,8 +49,8 @@ public class ServiceResolutionTests
         service.Log("Test message");
 
         // Assert
-        await Assert.That(mockService.ReceivedCalls()).Count().IsEqualTo(1);
-        mockService.Received().Log("Test message");
+        imposter.Log(Arg<string>.Any()).Called(Count.Once());
+        imposter.Log("Test message").Called(Count.Once());
     }
 
     [Test]
