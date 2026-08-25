@@ -43,4 +43,11 @@ public sealed class AutorediAttribute(
     /// Gets the registration priority (higher values are registered first).
     /// </summary>
     public int Priority => priority;
+
+    /// <summary>
+    /// Gets or sets the interfaces to register the class against. When provided with at least
+    /// one entry, it replaces <see cref="InterfaceType"/>. Each entry must be an interface
+    /// implemented by the decorated class.
+    /// </summary>
+    public Type[]? InterfaceTypes { get; set; }
 }

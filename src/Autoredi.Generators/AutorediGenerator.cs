@@ -21,29 +21,67 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             });
 
         context.Flow()
-            .ForAttributeWithMetadataName<ServiceRegistration>(Names.AutorediAttFullName)
+            .ForAttributeWithMetadataName<AutorediTarget>(Names.AutorediAttFullName)
             .Select(ServiceRegistrationExtractor.Extract)
             .Collect()
-            .EmitAll((spc, registrations) =>
+            .EmitAll((spc, targets) =>
             {
-                if (registrations.IsDefaultOrEmpty)
+                if (targets.IsDefaultOrEmpty)
                 {
                     return;
                 }
 
-                // The consumer projects follow [AssemblyName].Autoredi pattern.
-                var targetNamespace = registrations[0].AssemblyName + ".Autoredi";
+                var present = targets.Where(t => t is not null).ToImmutableArray();
+                if (present.IsEmpty)
+                {
+                    return;
+                }
 
-                var source = AutorediSourceBuilder.Generate(registrations, targetNamespace, registrations[0].AssemblyName);
-                spc.AddSource("AutorediServices.g.cs", source);
+                // Extract-time validation issues (invalid lifetime/interface arguments).
+                foreach (var target in present)
+                {
+                    foreach (var info in target.Diagnostics.Values)
+                    {
+                        spc.ReportDiagnostic(CreateDiagnostic(info));
+                    }
+                }
+
+                // Emit even when every target is invalid so consumer calls to the generated
+                // extension methods still compile; the diagnostics above explain the gaps.
+                var assemblyName = present[0].AssemblyName;
+                var targetNamespace = assemblyName + ".Autoredi";
+                var result = AutorediSourceBuilder.Generate(present, targetNamespace, assemblyName);
+
+                // Output-stage issues (group-name warnings, method-name collisions).
+                foreach (var diagnostic in result.Diagnostics)
+                {
+                    spc.ReportDiagnostic(diagnostic);
+                }
+
+                spc.AddSource("AutorediServices.g.cs", result.Source);
             })
             .Build()
             .Initialize(context);
     }
+
+    private static Diagnostic CreateDiagnostic(DiagnosticInfo info) =>
+        string.IsNullOrEmpty(info.Arg1)
+            ? Diagnostic.Create(ResolveDescriptor(info.Id), Location.None, info.Arg0)
+            : Diagnostic.Create(ResolveDescriptor(info.Id), Location.None, info.Arg0, info.Arg1);
+
+    private static DiagnosticDescriptor ResolveDescriptor(string id) => id switch
+    {
+        "AUTOREDI007" => Diagnostics.InterfaceNotImplemented,
+        "AUTOREDI010" => Diagnostics.InvalidLifetime,
+        "AUTOREDI011" => Diagnostics.InvalidInterfaceType,
+        _ => throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown Autoredi diagnostic id.")
+    };
 }
 
 internal static class AutorediAllServicesSource
 {
+    private const string AggregatorMarkerSuffix = ".Autoredi.AutorediServiceCollectionExtensions";
+
     public static string? TryCreate(Compilation compilation)
     {
         var attributeSymbol = compilation.GetTypeByMetadataName(Names.AutorediAttFullName);
@@ -68,19 +106,28 @@ internal static class AutorediAllServicesSource
         return AutorediAllServicesBuilder.Generate(targetNamespace, compilation.AssemblyName ?? compilation.Assembly.Name, assemblyNames);
     }
 
+    /// <summary>
+    /// Collects assemblies that contribute Autoredi registrations:
+    /// - the current assembly via a bounded walk of its own types (its generated marker type
+    ///   is not yet visible during the first generation run),
+    /// - referenced assemblies via an O(1) probe of their generated extension class,
+    ///   which exists exactly when their generator run produced registrations.
+    /// </summary>
     private static List<string> GetAssembliesWithAutoredi(Compilation compilation, INamedTypeSymbol attributeSymbol)
     {
         var assemblies = new List<string>();
-        if (AssemblyHasAutoredi(compilation.Assembly, attributeSymbol))
+        var currentAssemblyName = compilation.Assembly.Name;
+
+        if (NamespaceHasAutoredi(compilation.Assembly.GlobalNamespace, attributeSymbol))
         {
-            assemblies.Add(compilation.Assembly.Name);
+            assemblies.Add(currentAssemblyName);
         }
 
-        foreach (var assembly in compilation.SourceModule.ReferencedAssemblySymbols)
+        foreach (var referenced in compilation.SourceModule.ReferencedAssemblySymbols)
         {
-            if (AssemblyHasAutoredi(assembly, attributeSymbol))
+            if (referenced.GetTypeByMetadataName(referenced.Name + AggregatorMarkerSuffix) is not null)
             {
-                assemblies.Add(assembly.Name);
+                assemblies.Add(referenced.Name);
             }
         }
 
@@ -89,24 +136,18 @@ internal static class AutorediAllServicesSource
             return assemblies;
         }
 
-        var currentAssembly = compilation.Assembly.Name;
         var ordered = new List<string>();
-        if (assemblies.Contains(currentAssembly))
+        if (assemblies.Contains(currentAssemblyName))
         {
-            ordered.Add(currentAssembly);
+            ordered.Add(currentAssemblyName);
         }
 
         ordered.AddRange(assemblies
-            .Where(name => name != currentAssembly)
+            .Where(name => name != currentAssemblyName)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(name => name, StringComparer.Ordinal));
 
         return ordered;
-    }
-
-    private static bool AssemblyHasAutoredi(IAssemblySymbol assembly, INamedTypeSymbol attributeSymbol)
-    {
-        return NamespaceHasAutoredi(assembly.GlobalNamespace, attributeSymbol);
     }
 
     private static bool NamespaceHasAutoredi(INamespaceSymbol symbol, INamedTypeSymbol attributeSymbol)
@@ -132,38 +173,17 @@ internal static class AutorediAllServicesSource
 
     private static bool TypeHasAutoredi(INamedTypeSymbol symbol, INamedTypeSymbol attributeSymbol)
     {
-        if (HasAutorediAttribute(symbol, attributeSymbol))
+        foreach (var attribute in symbol.GetAttributes())
         {
-            return true;
+            if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeSymbol))
+            {
+                return true;
+            }
         }
 
         foreach (var nested in symbol.GetTypeMembers())
         {
             if (TypeHasAutoredi(nested, attributeSymbol))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool HasAutorediAttribute(INamedTypeSymbol symbol, INamedTypeSymbol attributeSymbol)
-    {
-        foreach (var attribute in symbol.GetAttributes())
-        {
-            var attributeClass = attribute.AttributeClass;
-            if (attributeClass is null)
-            {
-                continue;
-            }
-
-            if (SymbolEqualityComparer.Default.Equals(attributeClass, attributeSymbol))
-            {
-                return true;
-            }
-
-            if (attributeClass.ToDisplayString() == Names.AutorediAttFullName)
             {
                 return true;
             }

@@ -17,34 +17,31 @@ Autoredi is a powerful source generator for .NET that simplifies dependency inje
   - [Complex: Controllers and Dynamic Resolution](#complex-controllers-and-dynamic-resolution)
   - [Grouped Registration](#grouped-registration)
   - [Priority Ordering](#priority-ordering)
+  - [Multiple Interfaces](#multiple-interfaces)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## Installation
 
-To use Autoredi, install the NuGet packages for the main library and the source generator in your .NET project:
+To use Autoredi, install the main package (the source generator ships inside it):
 
 ```bash
-dotnet add package Autoredi --version 1.0.0
+dotnet add package Autoredi
 ```
 
-Ensure your project references `Microsoft.Extensions.DependencyInjection.Abstractions` (version 9.* or compatible):
-
-```xml
-<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
-```
-
-Your project should target .NET 9.0 or a compatible framework. For example:
+Your project should target .NET 10.0 or a compatible framework. For example:
 
 ```xml
 <PropertyGroup>
-  <TargetFramework>net9.0</TargetFramework>
+  <TargetFramework>net10.0</TargetFramework>
 </PropertyGroup>
 ```
 
 ## Usage
 
 Autoredi makes dependency injection effortless by generating DI registration code based on the `[Autoredi]` attribute. Let’s explore how to use Autoredi through a story that starts with a simple configuration service and evolves into a sophisticated notification system with controllers and dynamic service resolution.
+
+**TryAdd semantics:** all generated registrations use `TryAdd*` / `TryAddEnumerable`, so they fill gaps and never override services you registered manually before calling them. Calling a generated method twice is safe and adds no duplicates.
 
 ### Simple: Registering a Concrete Service
 
@@ -321,9 +318,9 @@ var services = new ServiceCollection();
 // Option 1: Register the default (ungrouped) services for this assembly
 services.AddAutorediServices();
 
-// Option 2: Selective Registration
-services.AddAutorediServicesFirebase(); // Registers only Firebase group
-services.AddAutorediServicesAccount();  // Registers only Account group
+// Option 2: Selective registration (per assembly, per group)
+services.AddAutorediServicesFirebase(); // Registers only this assembly's Firebase group
+services.AddAutorediServicesAccount();  // Registers only this assembly's Account group
 
 // Option 3: Register every service emitted from this assembly
 services.AddAutorediServicesSamplesModularApp();
@@ -332,9 +329,20 @@ services.AddAutorediServicesSamplesModularApp();
 services.AddAutorediServicesAll();
 ```
 
-`AddAutorediServices` handles the ungrouped services, while `AddAutorediServices{AssemblyName}` registers the full assembly.
+`AddAutorediServices` handles the ungrouped services of this assembly, while `AddAutorediServices{AssemblyName}` registers every group that assembly contributes.
 
-*Note: Group registration methods (e.g., `AddAutorediServicesFirebase`) automatically include services from the same group in referenced assemblies. Check the `samples/Samples.Modular` directory for a complete cross-project example.*
+*Note: group methods are **per-assembly**. A group method generated in your app only knows the app's own registrations; a library contributes its groups through its own generated class. For cross-assembly registration use `AddAutorediServicesAll()`, or call the referenced assembly's class directly:*
+
+```csharp
+using InfrastructureAutoredi = Samples.Modular.Infrastructure.Autoredi.AutorediServiceCollectionExtensions;
+
+services.AddAutorediServices();                       // app defaults
+InfrastructureAutoredi.AddAutorediServicesStorage(services); // one group from a library
+```
+
+See `samples/Samples.Modular.App` for a complete cross-project example.
+
+**Group naming rules:** group names become part of the generated method name (`"Firebase"` → `AddAutorediServicesFirebase`). Names that are not valid C# identifiers are sanitized with a naming warning (`AUTOREDI018`), and names that would collide with another generated method — including `"All"` and the assembly fragment — are reported as errors (`AUTOREDI023`) and skipped.
 
 ### Priority Ordering
 
@@ -354,7 +362,25 @@ public class SecondService { }
 public class LastService { }
 ```
 
-Priorities are scoped to their group (or the default group). This is helpful when service registration order matters, such as when using decorators or the `TryAdd` pattern (though Autoredi always uses `Add`).
+Priorities are scoped to their group (or the default group). Because registrations use TryAdd semantics, order decides who wins when several services target the same service type: the first registration for a given (service type, implementation) pair sticks, so priority is how you choose which implementation fills the gap first when nothing was registered manually.
+
+### Multiple Interfaces
+
+One attribute can register a class against several interfaces. When `InterfaceTypes` has at least one entry, it replaces `interfaceType` entirely and no self-registration is emitted:
+
+```csharp
+[Autoredi(ServiceLifetime.Scoped, InterfaceTypes = [typeof(IRepo), typeof(ICache)])]
+public class RedisStore : IRepo, ICache { }
+```
+
+Generates one descriptor per interface:
+
+```csharp
+services.TryAddEnumerable(ServiceDescriptor.Scoped<IRepo, RedisStore>());
+services.TryAddEnumerable(ServiceDescriptor.Scoped<ICache, RedisStore>());
+```
+
+Each entry must be an interface implemented by the decorated class; otherwise the generator reports an error at compile time instead of producing broken code.
 
 ## Contributing
 

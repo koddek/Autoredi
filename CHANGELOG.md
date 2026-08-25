@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Multi-interface registration**: `[Autoredi(..., InterfaceTypes = [typeof(A), typeof(B)])]` emits one descriptor per interface. Explicit interface list means interfaces-only (no self registration), matching the single `interfaceType` contract.
+- **Compile-time diagnostics** (generator now validates instead of emitting broken code):
+    - AUTOREDI007 error: decorated class does not implement the requested interface.
+    - AUTOREDI010 error: invalid ServiceLifetime value.
+    - AUTOREDI011 error: requested service type is not an interface.
+    - AUTOREDI018 warning: group name is not a valid C# identifier; method is generated from a sanitized fragment (`"my-group"` → `AddAutorediServicesMyGroup`).
+    - AUTOREDI023 error: two generated methods would share one name (group named "All", group fragment equal to the assembly fragment, or duplicate fragments); the later registration set is skipped.
+
+### Changed
+- **TryAdd semantics**: generated methods use `TryAdd*` / `TryAddEnumerable(ServiceDescriptor.*)` instead of `Add*`.
+    - Calling a generated method twice no longer duplicates descriptors.
+    - Generated registrations fill gaps and never override services registered manually before the call (previously last-wins).
+    - Multiple implementations of the same unkeyed interface keep coexisting (`IEnumerable<T>` resolution unchanged) because interface registrations use `TryAddEnumerable`, which matches on service type + implementation type.
+- Generator performance: referenced-assembly discovery probes each reference's generated marker type instead of walking every type of every referenced assembly on each compilation update.
+- Pinned `Microsoft.Extensions.DependencyInjection(.Abstractions)` to 10.0.2 in `Directory.Build.props` (was floating `Version="*"`).
+
+### Fixed
+- Service keys containing quotes or backslashes no longer produce uncompilable code (keys are emitted as properly escaped literals).
+- Group names that are not valid identifiers no longer break the build; they are sanitized with a naming warning.
+- README removed an incorrect claim that group methods automatically include same-group services from referenced assemblies; group methods are per-assembly. Use `AddAutorediServicesAll()` for cross-assembly registration, or call referenced assemblies' generated classes directly (see the modular sample).
+- Restored `Samples.Modular.App` (referenced by the solution but missing from disk); samples now use local project references instead of a stale published package version.
+
 ## [0.4.11] - 2026-03-06
 
 ### Fixed
