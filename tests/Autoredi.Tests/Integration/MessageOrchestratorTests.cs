@@ -31,10 +31,10 @@ public class MessageOrchestratorTests
     public async Task MessageOrchestratorSend_CallsCorrectSender_WhenKeyIsValid(string key, string message)
     {
         // Arrange
-        var mockSender = Substitute.For<ITestMessageSender>();
+        var imposter = ITestMessageSender.Imposter();
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        services.AddKeyedSingleton<ITestMessageSender>(key, mockSender);
+        services.AddKeyedSingleton<ITestMessageSender>(key, imposter.Instance());
         services.AddSingleton<Func<string, ITestMessageSender?>>(sp => k =>
             sp.GetKeyedService<ITestMessageSender>(k));
         var provider = services.BuildServiceProvider();
@@ -44,8 +44,8 @@ public class MessageOrchestratorTests
         orchestrator.Send(key, message);
 
         // Assert
-        await Assert.That(mockSender.ReceivedCalls()).Count().IsEqualTo(1);
-        mockSender.Received().Send(message);
+        imposter.Send(Arg<string>.Any()).Called(Count.Once());
+        imposter.Send(message).Called(Count.Once());
     }
 
     [Test]
@@ -90,13 +90,13 @@ public class MessageOrchestratorTests
     public async Task MessageOrchestrator_DelegatesToKeyedServices_Correctly()
     {
         // Arrange
-        var emailMock = Substitute.For<ITestMessageSender>();
-        var smsMock = Substitute.For<ITestMessageSender>();
+        var emailImposter = ITestMessageSender.Imposter();
+        var smsImposter = ITestMessageSender.Imposter();
 
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.Email, emailMock);
-        services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.SMS, smsMock);
+        services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.Email, emailImposter.Instance());
+        services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.SMS, smsImposter.Instance());
         services.AddSingleton<Func<string, ITestMessageSender?>>(sp => key =>
             sp.GetKeyedService<ITestMessageSender>(key));
         var provider = services.BuildServiceProvider();
@@ -107,7 +107,9 @@ public class MessageOrchestratorTests
         orchestrator.Send(ServiceKeys.SMS, "Via SMS");
 
         // Assert
-        emailMock.Received().Send("Via email");
-        smsMock.Received().Send("Via SMS");
+        emailImposter.Send("Via email").Called(Count.Once());
+        smsImposter.Send("Via SMS").Called(Count.Once());
+        emailImposter.Send(Arg<string>.Any()).Called(Count.Once());
+        smsImposter.Send(Arg<string>.Any()).Called(Count.Once());
     }
 }

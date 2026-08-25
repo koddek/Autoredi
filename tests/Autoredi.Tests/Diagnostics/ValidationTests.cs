@@ -155,11 +155,13 @@ public class ValidationTests
 
         // Act
         services1.AddAutorediServices();
-        services1.AddAutorediServices(); // Second call
+        services1.AddAutorediServices(); // Second call must not duplicate descriptors (TryAdd).
 
         services2.AddAutorediServices();
 
-        // Assert - Both should resolve the same services
+        // Assert - Same descriptor count whether called once or twice.
+        await Assert.That(services1.Count).IsEqualTo(services2.Count);
+
         var provider1 = services1.BuildServiceProvider();
         var provider2 = services2.BuildServiceProvider();
 

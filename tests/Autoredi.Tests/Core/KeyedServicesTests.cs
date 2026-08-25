@@ -62,19 +62,19 @@ public class KeyedServicesTests
     public async Task KeyedService_CallsMethod_WhenInvoked(string key)
     {
         // Arrange
-        var mockSender = Substitute.For<ITestMessageSender>();
+        var imposter = ITestMessageSender.Imposter();
         var services = new ServiceCollection();
-        services.AddKeyedSingleton<ITestMessageSender>(key, mockSender);
+        services.AddKeyedSingleton<ITestMessageSender>(key, imposter.Instance());
         var provider = services.BuildServiceProvider();
 
         // Act
         var sender = provider.GetKeyedService<ITestMessageSender>(key);
         await Assert.That(sender).IsNotNull();
-        sender.Send("Test message");
+        sender!.Send("Test message");
 
         // Assert
-        await Assert.That(mockSender.ReceivedCalls()).Count().IsEqualTo(1);
-        mockSender.Received().Send("Test message");
+        imposter.Send(Arg<string>.Any()).Called(Count.Once());
+        imposter.Send("Test message").Called(Count.Once());
     }
 
     [Test]
