@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.5.3] - 2026-09-24
 
 ### Changed
 - Updated Flowgen to 0.11.0 and migrated the generator to its current pipeline API.
