@@ -10,7 +10,7 @@ public class AdvancedRegistrationTests
         // AddAutorediServicesAutorediTests must include Firebase + Account + Default
         var services = new ServiceCollection();
         services.AddAutorediServicesAutorediTests();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         await Assert.That(provider.GetService<FirebaseConfig>()).IsNotNull();
         await Assert.That(provider.GetService<AccountService>()).IsNotNull();
@@ -24,7 +24,7 @@ public class AdvancedRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         await Assert.That(provider.GetService<DefaultService>()).IsNotNull();
         await Assert.That(provider.GetService<FirebaseConfig>()).IsNull();
@@ -41,7 +41,7 @@ public class AdvancedRegistrationTests
         // Verifies marker-probe path: tests references Samples.Modular.Infrastructure
         var services = new ServiceCollection();
         services.AddAutorediServicesAll();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Local services still present
         await Assert.That(provider.GetService<DefaultService>()).IsNotNull();
@@ -58,7 +58,7 @@ public class AdvancedRegistrationTests
         services.AddAutorediServices(); // app defaults only
         // Call infrastructure's generated extension statically via alias-like fully qualified
         global::Samples.Modular.Infrastructure.Autoredi.AutorediServiceCollectionExtensions.AddAutorediServicesStorage(services);
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         await Assert.That(provider.GetService<DatabaseService>()).IsNotNull();
         await Assert.That(provider.GetService<FirebaseCore>()).IsNull();
@@ -89,7 +89,7 @@ public class AdvancedRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // SelfCheckImpl is registered as ISelfCheck, not as SelfCheckImpl concrete
         await Assert.That(provider.GetService<ISelfCheck>()).IsNotNull();
@@ -131,7 +131,7 @@ public class AdvancedRegistrationTests
         var services = new ServiceCollection();
         services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.Email, imposter.Instance());
         services.AddAutorediServices(); // should not replace Email keyed registration
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         var resolved = provider.GetRequiredKeyedService<ITestMessageSender>(ServiceKeys.Email);
         await Assert.That(ReferenceEquals(resolved, imposter.Instance())).IsTrue();
@@ -142,7 +142,7 @@ public class AdvancedRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         await Assert.That(() => provider.GetRequiredService<ITestExternalService>()).ThrowsException();
         await Assert.That(() => provider.GetRequiredKeyedService<ITestMessageSender>("no-such-key")).ThrowsException();
@@ -153,7 +153,7 @@ public class AdvancedRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         await Assert.That(provider.GetService<ITestExternalService>()).IsNull();
         await Assert.That(provider.GetKeyedService<ITestMessageSender>("invalid")).IsNull();
@@ -170,7 +170,7 @@ public class AdvancedRegistrationTests
         services.AddAutorediServices();
         services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.Email, imposter.Instance());
         services.AddSingleton<Func<string, ITestMessageSender?>>(sp => k => sp.GetKeyedService<ITestMessageSender>(k));
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
         var orchestrator = provider.GetRequiredService<TestServices.TestMessageOrchestrator>();
 
         orchestrator.Send(ServiceKeys.Email, "first");

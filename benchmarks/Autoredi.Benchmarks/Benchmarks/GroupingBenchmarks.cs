@@ -15,7 +15,7 @@ public class GroupingBenchmarks
     public void FullRegistration()
     {
         var services = new ServiceCollection();
-        services.AddAutorediServices();
+        services.AddAutorediServicesAutorediBenchmarks();
     }
 
     [Benchmark(Description = "Autoredi - Selective Registration (GroupA Only)")]
@@ -29,6 +29,6 @@ public class GroupingBenchmarks
     public void DefaultGroupOnly()
     {
         var services = new ServiceCollection();
-        services.AddAutorediServicesAutorediBenchmarks();
+        services.AddAutorediServices();
     }
 }

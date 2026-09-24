@@ -10,7 +10,7 @@ public class UserFlowTests
         // Mirrors README: [Autoredi(Singleton)] AppConfig without interface
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         var a = provider.GetRequiredService<TestSettings>();
         var b = provider.GetRequiredService<TestSettings>();
@@ -27,7 +27,7 @@ public class UserFlowTests
         // Mirrors README: [Autoredi(Transient, typeof(ILogger))] ConsoleLogger : ILogger
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         var logger = provider.GetRequiredService<ITestLogService>();
         await Assert.That(logger).IsOfType(typeof(TestLogService));
@@ -45,7 +45,7 @@ public class UserFlowTests
         // Mirrors README: Email vs SMS via string keys
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         var email = provider.GetRequiredKeyedService<ITestMessageSender>(ServiceKeys.Email);
         var sms = provider.GetRequiredKeyedService<ITestMessageSender>(ServiceKeys.SMS);
@@ -63,7 +63,7 @@ public class UserFlowTests
     {
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         var controller = provider.GetRequiredService<TestServices.TestMessageController>();
 
@@ -79,7 +79,7 @@ public class UserFlowTests
         var services = new ServiceCollection();
         services.AddAutorediServices();
         services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.SMS, imposter.Instance());
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         var controller = provider.GetRequiredService<TestServices.TestMessageController>();
         controller.SendMessage("hello world");
@@ -97,7 +97,7 @@ public class UserFlowTests
         var services = new ServiceCollection();
         services.AddAutorediServices();
         services.AddSingleton<Func<string, ITestMessageSender?>>(sp => key => sp.GetKeyedService<ITestMessageSender>(key));
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         var orchestrator = provider.GetRequiredService<TestServices.TestMessageOrchestrator>();
 
@@ -116,7 +116,7 @@ public class UserFlowTests
         // User has modular services split into Firebase / Account / Default groups
         var firebaseOnly = new ServiceCollection();
         firebaseOnly.AddAutorediServicesFirebase();
-        var firebaseProvider = firebaseOnly.BuildServiceProvider();
+        using var firebaseProvider = firebaseOnly.BuildServiceProvider();
 
         await Assert.That(firebaseProvider.GetService<FirebaseConfig>()).IsNotNull();
         await Assert.That(firebaseProvider.GetService<AccountService>()).IsNull();
@@ -124,7 +124,7 @@ public class UserFlowTests
 
         var accountOnly = new ServiceCollection();
         accountOnly.AddAutorediServicesAccount();
-        var accountProvider = accountOnly.BuildServiceProvider();
+        using var accountProvider = accountOnly.BuildServiceProvider();
 
         await Assert.That(accountProvider.GetService<AccountService>()).IsNotNull();
         await Assert.That(accountProvider.GetService<FirebaseConfig>()).IsNull();
@@ -137,7 +137,7 @@ public class UserFlowTests
     {
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         var audit = provider.GetRequiredService<IAuditTrail>();
         var telemetry = provider.GetRequiredService<ITelemetrySink>();
@@ -164,7 +164,7 @@ public class UserFlowTests
         var services = new ServiceCollection();
         services.AddSingleton<ITestLogService>(imposter.Instance()); // manual first
         services.AddAutorediServices(); // Autoredi must not replace it (TryAdd)
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         var resolved = provider.GetRequiredService<ITestLogService>();
         await Assert.That(ReferenceEquals(resolved, imposter.Instance())).IsTrue();

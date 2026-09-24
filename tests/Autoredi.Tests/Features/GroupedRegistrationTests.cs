@@ -14,7 +14,7 @@ public class GroupedRegistrationTests
 
         // Act
         services.AddAutorediServicesFirebase();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Assert
         // Should have Firebase services
@@ -35,7 +35,7 @@ public class GroupedRegistrationTests
 
         // Act
         services.AddAutorediServicesAccount();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Assert
         await Assert.That(provider.GetService<AccountService>()).IsNotNull();
@@ -53,7 +53,7 @@ public class GroupedRegistrationTests
 
         // Act
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Assert
         await Assert.That(provider.GetService<DefaultService>()).IsNotNull();
@@ -71,7 +71,7 @@ public class GroupedRegistrationTests
 
         // Act
         services.AddAutorediServicesAutorediTests();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Assert - All services available
         await Assert.That(provider.GetService<FirebaseConfig>()).IsNotNull();
@@ -87,7 +87,7 @@ public class GroupedRegistrationTests
 
         // Act
         services.AddAutorediServicesAll();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Assert - All services available
         await Assert.That(provider.GetService<FirebaseConfig>()).IsNotNull();

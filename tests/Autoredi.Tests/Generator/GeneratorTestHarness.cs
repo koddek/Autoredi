@@ -45,7 +45,10 @@ internal static class GeneratorTestHarness
         }
         """;
 
-    public static (ImmutableArray<Diagnostic> Diagnostics, ImmutableDictionary<string, string> Sources) Run(string userSource)
+    public static (ImmutableArray<Diagnostic> Diagnostics, ImmutableDictionary<string, string> Sources) Run(
+        string userSource,
+        string assemblyName = "Probe",
+        bool generateAggregator = false)
     {
         var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
         var references = new List<MetadataReference>
@@ -56,16 +59,28 @@ internal static class GeneratorTestHarness
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Reflection.dll")),
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Collections.dll")),
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Private.CoreLib.dll")),
+            MetadataReference.CreateFromFile(typeof(IServiceCollection).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(ServiceCollection).Assembly.Location),
         };
 
+        var syntaxTrees = new List<SyntaxTree>
+        {
+            CSharpSyntaxTree.ParseText(AttributeAndEnumSource, path: "AttributeAndEnum.cs"),
+            CSharpSyntaxTree.ParseText(userSource, path: "UserSource.cs"),
+        };
+
+        if (generateAggregator)
+        {
+            syntaxTrees.Add(CSharpSyntaxTree.ParseText(
+                "public static class AutorediTestEntryPoint { public static void Main() { } }",
+                path: "EntryPoint.cs"));
+        }
+
         var compilation = CSharpCompilation.Create(
-            "Probe",
-            [
-                CSharpSyntaxTree.ParseText(AttributeAndEnumSource),
-                CSharpSyntaxTree.ParseText(userSource),
-            ],
+            assemblyName,
+            syntaxTrees,
             references,
-            new CSharpCompilationOptions(OutputKind.ConsoleApplication));
+            new CSharpCompilationOptions(generateAggregator ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary));
 
         var driver = CSharpGeneratorDriver.Create(new global::Autoredi.Generators.AutorediGenerator());
         var result = driver.RunGenerators(compilation).GetRunResult();
@@ -74,11 +89,22 @@ internal static class GeneratorTestHarness
             t => Path.GetFileName(t.FilePath),
             t => t.GetText().ToString());
 
-        return (result.Diagnostics, sources);
+        var outputCompilation = compilation.AddSyntaxTrees(result.GeneratedTrees);
+        var compilationDiagnostics = outputCompilation.GetDiagnostics();
+        var diagnostics = result.Diagnostics.AddRange(compilationDiagnostics);
+
+        return (diagnostics, sources);
     }
 
     public static bool HasDiagnostic(ImmutableArray<Diagnostic> diagnostics, string id) =>
         diagnostics.Any(d => d.Id == id);
+
+    public static bool HasCompilationErrors(ImmutableArray<Diagnostic> diagnostics) =>
+        diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error
+            && d.Id.StartsWith("CS", StringComparison.Ordinal));
+
+    public static bool HasLocatedDiagnostic(ImmutableArray<Diagnostic> diagnostics, string id) =>
+        diagnostics.Any(d => d.Id == id && d.Location != Location.None);
 
     public static bool SourceContains(ImmutableDictionary<string, string> sources, string fragment) =>
         sources.Values.Any(source => source.Contains(fragment, StringComparison.Ordinal));

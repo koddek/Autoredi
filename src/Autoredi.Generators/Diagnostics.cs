@@ -36,10 +36,18 @@ public static class Diagnostics
 
     public static readonly DiagnosticDescriptor InvalidGroupName = new(
         id: "AUTOREDI018",
-        title: "Invalid group name",
-        messageFormat: "The group name '{0}' is not a valid C# identifier. The generated method will be named 'AddAutorediServices{1}'.",
+        title: "Group name requires sanitization",
+        messageFormat: "The group name '{0}' contains characters that are not valid in the generated method name. The generated method will be named 'AddAutorediServices{1}'.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidImplementationType = new(
+        id: "AUTOREDI012",
+        title: "Invalid Autoredi implementation type",
+        messageFormat: "The type '{0}' cannot be registered by Autoredi. Use an accessible, non-static, non-abstract, non-generic class with a public constructor.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public static readonly DiagnosticDescriptor MethodNameCollision = new(

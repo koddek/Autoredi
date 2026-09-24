@@ -1,8 +1,8 @@
 namespace Autoredi.Tests.Core;
 
-public class ServiceResolutionTests
+public class ServiceResolutionTests : IDisposable
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly ServiceProvider _serviceProvider;
 
     public ServiceResolutionTests()
     {
@@ -42,7 +42,7 @@ public class ServiceResolutionTests
         var imposter = ITestLogService.Imposter();
         var services = new ServiceCollection();
         services.AddSingleton<ITestLogService>(imposter.Instance());
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var service = provider.GetRequiredService<ITestLogService>();
@@ -72,7 +72,7 @@ public class ServiceResolutionTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         ITestLogService service1, service2;
@@ -136,4 +136,6 @@ public class ServiceResolutionTests
             }
         }
     }
+
+    public void Dispose() => _serviceProvider.Dispose();
 }

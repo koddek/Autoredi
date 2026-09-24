@@ -8,7 +8,7 @@ public class EnumerableAndScopeTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var generators = provider.GetServices<IReportGenerator>().ToList();
@@ -25,7 +25,7 @@ public class EnumerableAndScopeTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var first = provider.GetServices<IReportGenerator>().OfType<PdfReportGenerator>().First();
@@ -41,7 +41,7 @@ public class EnumerableAndScopeTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         IScopedKeyedService a1, a2;
@@ -61,7 +61,7 @@ public class EnumerableAndScopeTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         IScopedKeyedService s1, s2;
@@ -80,7 +80,7 @@ public class EnumerableAndScopeTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var t1 = provider.GetRequiredKeyedService<IScopedKeyedService>("transient-b");
@@ -96,7 +96,7 @@ public class EnumerableAndScopeTests
         // Arrange - service key contains quote and backslash, verifies FormatLiteral escaping
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var service = provider.GetKeyedService<ISpecialKeyService>("quote\"and\\slash");
@@ -112,7 +112,7 @@ public class EnumerableAndScopeTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var scoped = provider.GetKeyedService<IScopedKeyedService>("scoped-a");

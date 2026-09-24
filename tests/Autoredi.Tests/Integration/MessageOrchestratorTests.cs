@@ -1,8 +1,8 @@
 namespace Autoredi.Tests.Integration;
 
-public class MessageOrchestratorTests
+public class MessageOrchestratorTests : IDisposable
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly ServiceProvider _serviceProvider;
 
     public MessageOrchestratorTests()
     {
@@ -37,7 +37,7 @@ public class MessageOrchestratorTests
         services.AddKeyedSingleton<ITestMessageSender>(key, imposter.Instance());
         services.AddSingleton<Func<string, ITestMessageSender?>>(sp => k =>
             sp.GetKeyedService<ITestMessageSender>(k));
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
         var orchestrator = provider.GetRequiredService<TestServices.TestMessageOrchestrator>();
 
         // Act
@@ -99,7 +99,7 @@ public class MessageOrchestratorTests
         services.AddKeyedSingleton<ITestMessageSender>(ServiceKeys.SMS, smsImposter.Instance());
         services.AddSingleton<Func<string, ITestMessageSender?>>(sp => key =>
             sp.GetKeyedService<ITestMessageSender>(key));
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
         var orchestrator = provider.GetRequiredService<TestServices.TestMessageOrchestrator>();
 
         // Act
@@ -112,4 +112,6 @@ public class MessageOrchestratorTests
         emailImposter.Send(Arg<string>.Any()).Called(Count.Once());
         smsImposter.Send(Arg<string>.Any()).Called(Count.Once());
     }
+
+    public void Dispose() => _serviceProvider.Dispose();
 }

@@ -21,13 +21,13 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Flowgen" Version="0.9.0" GeneratePathProperty="true" PrivateAssets="all" />
+        <PackageReference Include="Flowgen" Version="0.11.0" GeneratePathProperty="true" PrivateAssets="all" />
     </ItemGroup>
 
     <ItemGroup>
       <PackageReference Remove="Microsoft.Extensions.DependencyInjection" />
-      <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
-      <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.400" />
+      <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+      <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
     </ItemGroup>
 
 </Project>

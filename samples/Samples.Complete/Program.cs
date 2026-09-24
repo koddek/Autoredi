@@ -28,7 +28,7 @@ class Program
             sp.GetKeyedService<INotificationService>(key)!);
 
         // 4. Build service provider
-        var serviceProvider = services.BuildServiceProvider();
+        using var serviceProvider = services.BuildServiceProvider();
 
         // 5. Demonstrate concrete service (Singleton)
         Console.WriteLine("1. Concrete Singleton Service:");

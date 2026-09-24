@@ -19,7 +19,7 @@ public class ComprehensiveRegistrationBenchmarks
     public void Autoredi_All()
     {
         var services = new ServiceCollection();
-        services.AddAutorediServices();
+        services.AddAutorediServicesAutorediBenchmarks();
     }
 
     [Benchmark(Description = "Manual - All Groups (40 Services)", Baseline = true)]

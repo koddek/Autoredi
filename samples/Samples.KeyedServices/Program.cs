@@ -22,7 +22,7 @@ class Program
         services.AddAutorediServices();
 
         // 3. Build service provider
-        var serviceProvider = services.BuildServiceProvider();
+        using var serviceProvider = services.BuildServiceProvider();
 
         // 4. Resolve services by key
         Console.WriteLine("Resolving notification services by key:\n");
@@ -67,7 +67,7 @@ class Program
         services.AddSingleton<Func<string, INotificationService>>(sp => key =>
             sp.GetKeyedService<INotificationService>(key)!);
 
-        var factoryServiceProvider = services.BuildServiceProvider();
+        using var factoryServiceProvider = services.BuildServiceProvider();
         var factory = factoryServiceProvider.GetRequiredService<Func<string, INotificationService>>();
 
         var dynamicService = factory(ServiceKeys.Email);

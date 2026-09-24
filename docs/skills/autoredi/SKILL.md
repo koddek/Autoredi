@@ -27,8 +27,10 @@ Compile-time DI registration for Microsoft.Extensions.DependencyInjection. Put `
 | `interfaceType` | null | Register as this service type instead of self. Must be an interface the class implements (AUTOREDI011 / AUTOREDI007 otherwise). |
 | `serviceKey` | null | Keyed registration (MEDI 8+). Resolve via `GetKeyedService(key)` or `[FromKeyedServices]`. |
 | `group` | null | Partitions registrations into separate generated methods. |
-| `priority` | 0 | Higher emitted first within its group; ties break alphabetically by type name. |
-| `InterfaceTypes` (property) | null | One descriptor per interface; replaces `interfaceType`; no self-registration when non-empty. |
+| `priority` | 0 | Higher emitted first within the selected method; ties break alphabetically by type name. It orders descriptors, not MEDI's single-service winner. |
+| `InterfaceTypes` (property) | null | One descriptor per unique interface; replaces `interfaceType`; no self-registration when non-empty. |
+
+The decorated type must be a non-static, non-abstract, non-generic class with a public constructor. Invalid implementation types produce AUTOREDI012.
 
 Syntax rules:
 - Positional args cannot skip: `[Autoredi(typeof(X))]` is illegal — pass lifetime first or use named form for later params (`group:`, `priority:`).
@@ -53,9 +55,9 @@ Generated bodies use TryAdd semantics — they fill gaps, never override:
 - Keyed variants mirror the same split.
 
 Consequences:
-- Manual registration made BEFORE the call always wins — standard test override technique.
+- Manual registrations are not removed or replaced. With multiple implementations, MEDI's normal single-service resolution follows the last matching descriptor; use keyed services when selection must be explicit.
 - Double-calls are idempotent (descriptor count unchanged).
-- Priority matters only against the gap-filling order among competing Autoredi registrations.
+- Priority orders generated descriptors within the selected method; it does not override MEDI's last-registration resolution.
 
 ## Canonical usage
 
@@ -105,14 +107,17 @@ InfrastructureAutoredi.AddAutorediServicesStorage(services);     // one library 
 | AUTOREDI007 | Error | Class does not implement requested interface. |
 | AUTOREDI010 | Error | Invalid ServiceLifetime value. |
 | AUTOREDI011 | Error | Requested service type is not an interface (or null). |
-| AUTOREDI018 | Warning | Group name sanitized into a valid identifier; generated method renamed accordingly. |
+| AUTOREDI012 | Error | Decorated implementation type cannot be registered by MEDI. |
+| AUTOREDI018 | Warning | Group name contains characters that require identifier sanitization. |
 | AUTOREDI023 | Error | Two generated methods would share a name ("All" reserved, group vs assembly fragment). Later registrations skipped until renamed. |
 
-Fix guidance: rename the group/assembly side, implement the interface, correct the enum value. Skipped registrations never appear in generated output — do not paper over AUTOREDI023 by hand-writing duplicate methods.
+Fix guidance: use a concrete implementation with a public constructor, rename the group/assembly side, implement the interface, or correct the enum value. Skipped registrations never appear in generated output — do not paper over AUTOREDI023 by hand-writing duplicate methods.
 
 ## Gotchas
 
 - Generated namespace is per-assembly: missing `using X.Autoredi;` surfaces as CS1061 "no extension method AddAutorediServices".
+- The decorated type must be a concrete, non-generic class with a public constructor.
+- An assembly whose method fragment would be `All` uses the `AddAutorediServicesAllAssembly` fallback for its assembly-wide method.
 - `AddAutorediServicesAll()` exists only in executable projects; libraries must aggregate explicitly or expose their own methods.
 - Group methods are per-assembly by design; there is no automatic cross-assembly group fan-out.
 - MEDI resolves each service type independently — two interfaces backed by one singleton class produce two instances unless you register an instance manually (standard MEDI behavior, not an Autoredi quirk).

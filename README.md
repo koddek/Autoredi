@@ -26,13 +26,16 @@ Autoredi is a powerful source generator for .NET that simplifies dependency inje
 
 ## Installation
 
-To use Autoredi, install the main package (the source generator ships inside it):
+To use Autoredi, install the main package (the source generator ships inside it) and the MEDI implementation used by your application:
 
 ```bash
 dotnet add package Autoredi
+dotnet add package Microsoft.Extensions.DependencyInjection
 ```
 
-Your project should target .NET 10.0 or a compatible framework. For example:
+Autoredi references `Microsoft.Extensions.DependencyInjection.Abstractions` for its generated API. The full `Microsoft.Extensions.DependencyInjection` package supplies `ServiceCollection` and `BuildServiceProvider` in application and sample hosts.
+
+The current Autoredi package targets .NET 10.0. For example:
 
 ```xml
 <PropertyGroup>
@@ -44,7 +47,7 @@ Your project should target .NET 10.0 or a compatible framework. For example:
 
 Autoredi makes dependency injection effortless by generating DI registration code based on the `[Autoredi]` attribute. Let’s explore how to use Autoredi through a story that starts with a simple configuration service and evolves into a sophisticated notification system with controllers and dynamic service resolution.
 
-**TryAdd semantics:** all generated registrations fill gaps and never override services you registered manually before calling them. Calling a generated method twice is safe and adds no duplicates. Single-implementation service types emit `services.TryAdd(ServiceDescriptor.*)`; interfaces with multiple implementations emit `services.TryAddEnumerable(ServiceDescriptor.*)` so every implementation stays resolvable via `IEnumerable<T>`.
+**TryAdd semantics:** generated registrations never replace an existing descriptor, and calling a generated method twice is safe. A single implementation uses `TryAdd`; multiple implementations use `TryAddEnumerable`, so all implementations remain available through `IEnumerable<T>`. MEDI still resolves a single service using its normal last-registration behavior, so use keyed services when selection must be explicit.
 
 ### Simple: Registering a Concrete Service
 
@@ -53,6 +56,7 @@ Imagine you’re building a console application and need to manage basic configu
 ```csharp
 using Autoredi.Attributes;
 using Microsoft.Extensions.DependencyInjection;
+using MyApp.Autoredi;
 
 [Autoredi(ServiceLifetime.Singleton)]
 public class AppConfig
@@ -79,7 +83,7 @@ class Program
 Application Name: MyConsoleApp
 ```
 
-Here, the `[Autoredi(ServiceLifetime.Singleton)]` attribute tells Autoredi to register `AppConfig` as a singleton. The generated `AddAutorediServices` method handles the registration (`services.AddSingleton<AppConfig>()`), so you can resolve `AppConfig` directly from the service provider. No manual DI setup required!
+Here, the `[Autoredi(ServiceLifetime.Singleton)]` attribute tells Autoredi to register `AppConfig` as a singleton. The generated `AddAutorediServices` method emits a `TryAddSingleton<AppConfig>()` registration, so you can resolve `AppConfig` directly from the service provider.
 
 ### Intermediate: Single Interface Implementation
 
@@ -88,6 +92,7 @@ As your application grows, you decide to add logging functionality. You define a
 ```csharp
 using Autoredi.Attributes;
 using Microsoft.Extensions.DependencyInjection;
+using MyApp.Autoredi;
 
 public interface ILogger
 {
@@ -122,7 +127,7 @@ class Program
 [LOG]: Application started successfully.
 ```
 
-The `[Autoredi(ServiceLifetime.Transient, typeof(ILogger))]` attribute registers `ConsoleLogger` as a transient implementation of `ILogger`. Autoredi generates `services.AddTransient<ILogger, ConsoleLogger>()`, allowing you to resolve `ILogger` seamlessly.
+The `[Autoredi(ServiceLifetime.Transient, typeof(ILogger))]` attribute registers `ConsoleLogger` as a transient implementation of `ILogger`. Autoredi generates a `TryAdd(ServiceDescriptor.Transient<ILogger, ConsoleLogger>())` registration, allowing you to resolve `ILogger` without replacing an existing descriptor.
 
 ### Advanced: Keyed Services for Multiple Implementations
 
@@ -131,6 +136,7 @@ Your application now needs to send notifications via email and SMS, both impleme
 ```csharp
 using Autoredi.Attributes;
 using Microsoft.Extensions.DependencyInjection;
+using MyApp.Autoredi;
 
 public static class Keys
 {
@@ -184,7 +190,7 @@ class Program
 [SMS]: Sending 'Hello Moto!!' via SMS.
 ```
 
-By specifying service keys (`"email"` and `"sms"`), Autoredi registers `EmailNotificationService` and `SmsNotificationService` as keyed services (`services.AddKeyedSingleton<INotificationService, EmailNotificationService>("email")`, etc.). You resolve them using `GetKeyedService`, enabling precise control over which implementation to use.
+By specifying service keys (`"email"` and `"sms"`), Autoredi emits keyed `TryAdd` registrations. Resolve them with `GetKeyedService` to select an implementation explicitly.
 
 ### Complex: Controllers and Dynamic Resolution
 
@@ -193,6 +199,7 @@ Now, you want to orchestrate notifications through controllers and dynamically s
 ```csharp
 using Autoredi.Attributes;
 using Microsoft.Extensions.DependencyInjection;
+using MyApp.Autoredi;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 public static class Keys
@@ -288,7 +295,7 @@ class Program
 In this scenario:
 - `MyController` uses `[Autoredi]` to register itself and injects a keyed `INotificationService` (SMS) via `[FromKeyedServices("sms")]`.
 - `GreetingManager` dynamically resolves `INotificationService` instances using a `Func<string, INotificationService>` factory, registered manually to map keys to services.
-- Autoredi generates registrations for `MyController` and `GreetingManager` (`services.AddTransient<MyController>()`, etc.), integrating seamlessly with the keyed services.
+- Autoredi emits `TryAdd` registrations for `MyController` and `GreetingManager`, integrating with the keyed services without replacing existing descriptors.
 
 This demonstrates Autoredi’s flexibility in handling complex DI scenarios, from constructor injection to runtime service selection.
 
@@ -328,13 +335,13 @@ services.AddAutorediServicesAccount();  // Registers only this assembly's Accoun
 // Option 3: Register every service emitted from this assembly
 services.AddAutorediServicesSamplesModularApp();
 
-// Option 4: Register all services from this assembly and referenced assemblies that define Autoredi registrations
+// Option 4: Register all services from this assembly and its direct referenced assemblies that define Autoredi registrations
 services.AddAutorediServicesAll();
 ```
 
 `AddAutorediServices` handles the ungrouped services of this assembly, while `AddAutorediServices{AssemblyName}` registers every group that assembly contributes.
 
-*Note: group methods are **per-assembly**. A group method generated in your app only knows the app's own registrations; a library contributes its groups through its own generated class. For cross-assembly registration use `AddAutorediServicesAll()`, or call the referenced assembly's class directly:*
+*Note: group methods are **per-assembly**. A group method generated in your app only knows the app's own registrations; a library contributes its groups through its own generated class. `AddAutorediServicesAll()` aggregates the current assembly and its direct referenced assemblies. For deeper dependency graphs, call each contributing generated class explicitly:*
 
 ```csharp
 using InfrastructureAutoredi = Samples.Modular.Infrastructure.Autoredi.AutorediServiceCollectionExtensions;
@@ -345,7 +352,7 @@ InfrastructureAutoredi.AddAutorediServicesStorage(services); // one group from a
 
 See `samples/Samples.Modular.App` for a complete cross-project example.
 
-**Group naming rules:** group names become part of the generated method name (`"Firebase"` → `AddAutorediServicesFirebase`). Names that are not valid C# identifiers are sanitized with a naming warning (`AUTOREDI018`), and names that would collide with another generated method — including `"All"` and the assembly fragment — are reported as errors (`AUTOREDI023`) and skipped.
+**Group naming rules:** group names become part of the generated method name (`"Firebase"` → `AddAutorediServicesFirebase`). Names that are not valid C# identifiers are sanitized with a naming warning (`AUTOREDI018`), and names that would collide with another generated method — including `"All"` and the assembly fragment — are reported as errors (`AUTOREDI023`) and skipped. An assembly whose fragment is `All` uses the fallback `AddAutorediServicesAllAssembly` method so the cross-assembly aggregator remains callable.
 
 ### Priority Ordering
 
@@ -365,7 +372,7 @@ public class SecondService { }
 public class LastService { }
 ```
 
-Priorities are scoped to their group (or the default group). Because registrations use TryAdd semantics, order decides who wins when several services target the same service type: the first registration for a given (service type, implementation) pair sticks, so priority is how you choose which implementation fills the gap first when nothing was registered manually.
+Priorities are scoped to the selected registration method. The generated descriptor order is descending priority, with alphabetical type-name tie-breaking. When multiple implementations share a service type, MEDI's normal single-service resolution still uses the last matching descriptor, so use keyed services when priority must determine the selected implementation.
 
 ### Multiple Interfaces
 
@@ -376,14 +383,14 @@ One attribute can register a class against several interfaces. When `InterfaceTy
 public class RedisStore : IRepo, ICache { }
 ```
 
-Generates one descriptor per interface. When RedisStore is the only implementation of each interface, the descriptors use plain `TryAdd`; a second class implementing either interface flips that interface's registrations to `TryAddEnumerable` so both stay resolvable:
+Generates one descriptor per unique interface. When an interface has only one implementation, Autoredi uses `TryAdd`; when multiple implementations exist anywhere in the assembly, it uses `TryAddEnumerable` consistently so every implementation remains resolvable:
 
 ```csharp
 services.TryAdd(ServiceDescriptor.Scoped<IRepo, RedisStore>());
 services.TryAdd(ServiceDescriptor.Scoped<ICache, RedisStore>());
 ```
 
-Each entry must be an interface implemented by the decorated class; otherwise the generator reports an error at compile time instead of producing broken code.
+Each entry must be an interface implemented by the decorated class; otherwise the generator reports an error at compile time instead of producing broken code. The decorated class must also be non-static, non-abstract, non-generic, and have a public constructor.
 
 ## Generated API Reference
 
@@ -411,9 +418,10 @@ The generator validates attribute usage instead of emitting broken code:
 | Id | Severity | Meaning | Fix |
 |---|---|---|---|
 | AUTOREDI007 | Error | Class does not implement the requested interface | Implement it or remove `interfaceType`/entry |
-| AUTOREDI010 | Error | Invalid `ServiceLifetime` value | Use Transient (0), Scoped (1), or Singleton (2) |
+| AUTOREDI010 | Error | Invalid `ServiceLifetime` value | Use Singleton (0), Scoped (1), or Transient (2) |
 | AUTOREDI011 | Error | Requested service type is not an interface (or null) | Pass an interface type |
-| AUTOREDI018 | Warning | Group name is not a valid C# identifier | None required; method generated from sanitized name (`"my-group"` → `AddAutorediServicesMyGroup`) |
+| AUTOREDI012 | Error | Decorated implementation type cannot be registered by MEDI | Use a concrete, non-generic class with a public constructor |
+| AUTOREDI018 | Warning | Group name contains characters that require identifier sanitization | None required; method generated from sanitized name (`"my-group"` → `AddAutorediServicesMyGroup`) |
 | AUTOREDI023 | Error | Generated method name collision (`"All"` reserved, group vs assembly fragment, duplicate fragments) | Rename one side; colliding registrations are skipped until resolved |
 
 ## Agent Guidance

@@ -21,7 +21,7 @@ class Program
         services.AddAutorediServices();
 
         // 3. Build service provider
-        var serviceProvider = services.BuildServiceProvider();
+        using var serviceProvider = services.BuildServiceProvider();
 
         // 4. Resolve by interface
         var logger = serviceProvider.GetRequiredService<ILogger>();

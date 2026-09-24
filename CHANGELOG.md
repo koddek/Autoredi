@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- Updated Flowgen to 0.11.0 and migrated the generator to its current pipeline API.
+- Updated direct MEDI, SourceLink, and TUnit dependencies; pinned Imposter.
+- Aligned CI with the .NET 10 solution and added test/sample verification.
+- Hardened generated namespaces, XML documentation, interface multiplicity, and invalid implementation diagnostics.
+- Clarified TryAdd, priority, and cross-assembly registration behavior in the consumer documentation.
+
 ## [0.5.1] - 2026-08-25
 
 ### Changed

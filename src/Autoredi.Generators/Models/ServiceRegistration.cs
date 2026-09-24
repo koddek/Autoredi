@@ -48,7 +48,20 @@ public readonly struct EquatableArray<T>(ImmutableArray<T> values) : IEquatable<
 /// A diagnostic payload produced during extraction, transported as plain data so it stays
 /// equatable through the incremental cache. Rendered into a real Diagnostic at output time.
 /// </summary>
-public readonly record struct DiagnosticInfo(string Id, string Arg0, string Arg1 = "") : IEquatable<DiagnosticInfo>;
+public readonly record struct DiagnosticInfo(
+    string Id,
+    string Arg0,
+    string Arg1 = "",
+    string? FilePath = null,
+    TextSpan TextSpan = default,
+    LinePositionSpan LineSpan = default) : IEquatable<DiagnosticInfo>
+{
+    public bool HasLocation => !string.IsNullOrEmpty(FilePath);
+
+    public Location ToLocation() => HasLocation
+        ? Location.Create(FilePath!, TextSpan, LineSpan)
+        : Location.None;
+}
 
 /// <summary>
 /// One class decorated with [Autoredi]: the registrations it expands to plus any
@@ -62,7 +75,6 @@ public sealed record AutorediTarget(
     string? ServiceKey,
     string? Group,
     int Priority,
-    string Namespace,
     string AssemblyName
 ) : IEquatable<AutorediTarget>
 {
@@ -76,7 +88,6 @@ public sealed record AutorediTarget(
         ServiceKey == other.ServiceKey &&
         Group == other.Group &&
         Priority == other.Priority &&
-        Namespace == other.Namespace &&
         AssemblyName == other.AssemblyName &&
         Diagnostics.Equals(other.Diagnostics);
 
@@ -90,7 +101,6 @@ public sealed record AutorediTarget(
             hash = (hash * 31) + (ServiceKey?.GetHashCode() ?? 0);
             hash = (hash * 31) + (Group?.GetHashCode() ?? 0);
             hash = (hash * 31) + Priority;
-            hash = (hash * 31) + Namespace.GetHashCode();
             hash = (hash * 31) + AssemblyName.GetHashCode();
             hash = (hash * 31) + Diagnostics.GetHashCode();
             return hash;

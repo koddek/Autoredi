@@ -21,7 +21,7 @@ class Program
         services.AddAutorediServicesSamplesBasic();
 
         // 3. Build service provider
-        var serviceProvider = services.BuildServiceProvider();
+        using var serviceProvider = services.BuildServiceProvider();
 
         // 4. Resolve and use the service
         var config = serviceProvider.GetRequiredService<AppConfig>();

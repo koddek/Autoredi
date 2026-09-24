@@ -10,7 +10,7 @@
     <!-- BenchmarkDotNet for performance testing -->
     <ItemGroup>
         <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-        <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.400" />
+        <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
     </ItemGroup>
 
     <!-- Reference the main project -->
@@ -28,8 +28,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+        <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+        <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
     </ItemGroup>
 
 </Project>

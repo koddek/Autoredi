@@ -9,7 +9,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         context.RegisterSourceOutput(
-            context.CompilationProvider.Select((compilation, _) => AutorediAllServicesSource.TryCreate(compilation)),
+            context.CompilationProvider.Select((compilation, ct) => AutorediAllServicesSource.TryCreate(compilation, ct)),
             (spc, source) =>
             {
                 if (source is null || source.Length == 0)
@@ -20,8 +20,8 @@ public sealed class AutorediGenerator : IIncrementalGenerator
                 spc.AddSource("AutorediServices.All.g.cs", source);
             });
 
-        context.Flow()
-            .ForAttributeWithMetadataName<AutorediTarget>(Names.AutorediAttFullName)
+        Flow.Create()
+            .ForAttributeWithMetadataName(Names.AutorediAttFullName)
             .Select(ServiceRegistrationExtractor.Extract)
             .Collect()
             .EmitAll((spc, targets) =>
@@ -31,7 +31,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
                     return;
                 }
 
-                var present = targets.Where(t => t is not null).ToImmutableArray();
+                var present = targets.OfType<AutorediTarget>().ToImmutableArray();
                 if (present.IsEmpty)
                 {
                     return;
@@ -49,7 +49,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
                 // Emit even when every target is invalid so consumer calls to the generated
                 // extension methods still compile; the diagnostics above explain the gaps.
                 var assemblyName = present[0].AssemblyName;
-                var targetNamespace = assemblyName + ".Autoredi";
+                var targetNamespace = AutorediNaming.ToNamespace(assemblyName) + ".Autoredi";
                 var result = AutorediSourceBuilder.Generate(present, targetNamespace, assemblyName);
 
                 // Output-stage issues (group-name warnings, method-name collisions).
@@ -64,16 +64,21 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             .Initialize(context);
     }
 
-    private static Diagnostic CreateDiagnostic(DiagnosticInfo info) =>
-        string.IsNullOrEmpty(info.Arg1)
-            ? Diagnostic.Create(ResolveDescriptor(info.Id), Location.None, info.Arg0)
-            : Diagnostic.Create(ResolveDescriptor(info.Id), Location.None, info.Arg0, info.Arg1);
+    private static Diagnostic CreateDiagnostic(DiagnosticInfo info)
+    {
+        var descriptor = ResolveDescriptor(info.Id);
+        var location = info.ToLocation();
+        return string.IsNullOrEmpty(info.Arg1)
+            ? Diagnostic.Create(descriptor, location, info.Arg0)
+            : Diagnostic.Create(descriptor, location, info.Arg0, info.Arg1);
+    }
 
     private static DiagnosticDescriptor ResolveDescriptor(string id) => id switch
     {
         "AUTOREDI007" => Diagnostics.InterfaceNotImplemented,
         "AUTOREDI010" => Diagnostics.InvalidLifetime,
         "AUTOREDI011" => Diagnostics.InvalidInterfaceType,
+        "AUTOREDI012" => Diagnostics.InvalidImplementationType,
         _ => throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown Autoredi diagnostic id.")
     };
 }
@@ -82,8 +87,9 @@ internal static class AutorediAllServicesSource
 {
     private const string AggregatorMarkerSuffix = ".Autoredi.AutorediServiceCollectionExtensions";
 
-    public static string? TryCreate(Compilation compilation)
+    public static string? TryCreate(Compilation compilation, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var attributeSymbol = compilation.GetTypeByMetadataName(Names.AutorediAttFullName);
         if (attributeSymbol is null)
         {
@@ -96,14 +102,15 @@ internal static class AutorediAllServicesSource
             return null;
         }
 
-        var assemblyNames = GetAssembliesWithAutoredi(compilation, attributeSymbol);
+        var assemblyNames = GetAssembliesWithAutoredi(compilation, attributeSymbol, ct);
         if (assemblyNames.Count == 0)
         {
             return null;
         }
 
-        var targetNamespace = compilation.AssemblyName + ".Autoredi";
-        return AutorediAllServicesBuilder.Generate(targetNamespace, compilation.AssemblyName ?? compilation.Assembly.Name, assemblyNames);
+        var assemblyName = compilation.AssemblyName ?? compilation.Assembly.Name;
+        var targetNamespace = AutorediNaming.ToNamespace(assemblyName) + ".Autoredi";
+        return AutorediAllServicesBuilder.Generate(targetNamespace, assemblyNames);
     }
 
     /// <summary>
@@ -113,19 +120,23 @@ internal static class AutorediAllServicesSource
     /// - referenced assemblies via an O(1) probe of their generated extension class,
     ///   which exists exactly when their generator run produced registrations.
     /// </summary>
-    private static List<string> GetAssembliesWithAutoredi(Compilation compilation, INamedTypeSymbol attributeSymbol)
+    private static List<string> GetAssembliesWithAutoredi(
+        Compilation compilation,
+        INamedTypeSymbol attributeSymbol,
+        CancellationToken ct)
     {
         var assemblies = new List<string>();
         var currentAssemblyName = compilation.Assembly.Name;
 
-        if (NamespaceHasAutoredi(compilation.Assembly.GlobalNamespace, attributeSymbol))
+        if (NamespaceHasAutoredi(compilation.Assembly.GlobalNamespace, attributeSymbol, ct))
         {
             assemblies.Add(currentAssemblyName);
         }
 
         foreach (var referenced in compilation.SourceModule.ReferencedAssemblySymbols)
         {
-            if (referenced.GetTypeByMetadataName(referenced.Name + AggregatorMarkerSuffix) is not null)
+            ct.ThrowIfCancellationRequested();
+            if (referenced.GetTypeByMetadataName(AutorediNaming.ToNamespace(referenced.Name) + AggregatorMarkerSuffix) is not null)
             {
                 assemblies.Add(referenced.Name);
             }
@@ -150,11 +161,15 @@ internal static class AutorediAllServicesSource
         return ordered;
     }
 
-    private static bool NamespaceHasAutoredi(INamespaceSymbol symbol, INamedTypeSymbol attributeSymbol)
+    private static bool NamespaceHasAutoredi(
+        INamespaceSymbol symbol,
+        INamedTypeSymbol attributeSymbol,
+        CancellationToken ct)
     {
         foreach (var type in symbol.GetTypeMembers())
         {
-            if (TypeHasAutoredi(type, attributeSymbol))
+            ct.ThrowIfCancellationRequested();
+            if (TypeHasAutoredi(type, attributeSymbol, ct))
             {
                 return true;
             }
@@ -162,7 +177,8 @@ internal static class AutorediAllServicesSource
 
         foreach (var ns in symbol.GetNamespaceMembers())
         {
-            if (NamespaceHasAutoredi(ns, attributeSymbol))
+            ct.ThrowIfCancellationRequested();
+            if (NamespaceHasAutoredi(ns, attributeSymbol, ct))
             {
                 return true;
             }
@@ -171,7 +187,10 @@ internal static class AutorediAllServicesSource
         return false;
     }
 
-    private static bool TypeHasAutoredi(INamedTypeSymbol symbol, INamedTypeSymbol attributeSymbol)
+    private static bool TypeHasAutoredi(
+        INamedTypeSymbol symbol,
+        INamedTypeSymbol attributeSymbol,
+        CancellationToken ct)
     {
         foreach (var attribute in symbol.GetAttributes())
         {
@@ -183,7 +202,8 @@ internal static class AutorediAllServicesSource
 
         foreach (var nested in symbol.GetTypeMembers())
         {
-            if (TypeHasAutoredi(nested, attributeSymbol))
+            ct.ThrowIfCancellationRequested();
+            if (TypeHasAutoredi(nested, attributeSymbol, ct))
             {
                 return true;
             }

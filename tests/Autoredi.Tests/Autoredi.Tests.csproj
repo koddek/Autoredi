@@ -10,14 +10,14 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Imposter" Version="*" />
-        <PackageReference Include="TUnit" Version="1.65.68" />
+        <PackageReference Include="Imposter" Version="0.1.11" />
+        <PackageReference Include="TUnit" Version="1.69.0" />
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
         <!-- Runtime dependency of Autoredi.Generators; needed when driving the generator directly. -->
-        <PackageReference Include="Flowgen" Version="0.9.0" />
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
-        <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.400" />
+        <PackageReference Include="Flowgen" Version="0.11.0" />
+        <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+        <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+        <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
     </ItemGroup>
 
     <!-- Reference the main project -->

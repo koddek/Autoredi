@@ -52,7 +52,7 @@ public class ValidationTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var settings = provider.GetService<TestSettings>();
@@ -67,7 +67,7 @@ public class ValidationTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var service = provider.GetService<ITestLogService>();
@@ -82,7 +82,7 @@ public class ValidationTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         ITestSessionService? service;
@@ -101,7 +101,7 @@ public class ValidationTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var emailSender = provider.GetKeyedService<ITestMessageSender>(ServiceKeys.Email);
@@ -120,7 +120,7 @@ public class ValidationTests
         // Arrange
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var controller = provider.GetService<TestServices.TestMessageController>();
@@ -137,7 +137,7 @@ public class ValidationTests
         services.AddAutorediServices();
         services.AddSingleton<Func<string, ITestMessageSender?>>(sp => key =>
             sp.GetKeyedService<ITestMessageSender>(key));
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var orchestrator = provider.GetService<TestServices.TestMessageOrchestrator>();
@@ -162,8 +162,8 @@ public class ValidationTests
         // Assert - Same descriptor count whether called once or twice.
         await Assert.That(services1.Count).IsEqualTo(services2.Count);
 
-        var provider1 = services1.BuildServiceProvider();
-        var provider2 = services2.BuildServiceProvider();
+        using var provider1 = services1.BuildServiceProvider();
+        using var provider2 = services2.BuildServiceProvider();
 
         var settings1 = provider1.GetRequiredService<TestSettings>();
         var settings2 = provider2.GetRequiredService<TestSettings>();

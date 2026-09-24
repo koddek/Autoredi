@@ -10,7 +10,7 @@ public class RegistrationSemanticsTests
         services.AddAutorediServices();
 
         // Act
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
         var audit = provider.GetService<IAuditTrail>();
         var telemetry = provider.GetService<ITelemetrySink>();
 
@@ -40,7 +40,7 @@ public class RegistrationSemanticsTests
 
         // Act - generated registration must not replace the existing descriptor.
         services.AddAutorediServices();
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
         var resolved = provider.GetRequiredService<DefaultService>();
 
         // Assert

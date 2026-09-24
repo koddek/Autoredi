@@ -26,27 +26,48 @@ internal static class AutorediSourceBuilder
         builder.Namespace(@namespace);
 
         var validTargets = targets.Where(t => t.IsValid).ToImmutableArray();
+        var interfaceCounts = CountInterfaces(validTargets);
         // "All" is reserved for the cross-assembly aggregator emitted by AutorediAllServicesBuilder.
         var claimedNames = new HashSet<string>(StringComparer.Ordinal) { $"{MethodPrefix}All" };
+        var assemblySuffix = AutorediNaming.ToAssemblyMethodSuffix(assemblyName);
 
         builder.Class("public static partial", "AutorediServiceCollectionExtensions");
         builder.Block(b =>
         {
-            GenerateDefaultServicesMethod(b, validTargets);
-            GenerateGroupMethods(b, validTargets, claimedNames, diagnostics);
-            GenerateAssemblyWideServicesMethod(b, validTargets, assemblyName, claimedNames, diagnostics);
+            GenerateDefaultServicesMethod(b, validTargets, interfaceCounts);
+            GenerateGroupMethods(b, validTargets, assemblySuffix, interfaceCounts, claimedNames, diagnostics);
+            GenerateAssemblyWideServicesMethod(b, validTargets, assemblyName, assemblySuffix, interfaceCounts, claimedNames, diagnostics);
         });
 
         return new GeneratedResult(builder.ToString(), diagnostics.ToImmutableArray());
     }
 
-    private static void GenerateDefaultServicesMethod(SourceBuilder builder, ImmutableArray<AutorediTarget> targets)
+    private static Dictionary<(string InterfaceType, string? ServiceKey), int> CountInterfaces(
+        ImmutableArray<AutorediTarget> targets)
+    {
+        var counts = new Dictionary<(string InterfaceType, string? ServiceKey), int>();
+        foreach (var target in targets)
+        {
+            foreach (var interfaceType in target.InterfaceTypes.Values)
+            {
+                var key = (interfaceType, target.ServiceKey);
+                counts[key] = counts.TryGetValue(key, out var count) ? count + 1 : 1;
+            }
+        }
+
+        return counts;
+    }
+
+    private static void GenerateDefaultServicesMethod(
+        SourceBuilder builder,
+        ImmutableArray<AutorediTarget> targets,
+        Dictionary<(string InterfaceType, string? ServiceKey), int> interfaceCounts)
     {
         GenerateDefaultServicesDocComment(builder);
         builder.Method("public static", "IServiceCollection", MethodPrefix, "this IServiceCollection services");
         builder.Block(b =>
         {
-            EmitOrdered(b, targets.Where(t => string.IsNullOrEmpty(t.Group)));
+            EmitOrdered(b, targets.Where(t => string.IsNullOrEmpty(t.Group)), interfaceCounts);
             b.Line("return services;");
         });
         builder.Line();
@@ -55,6 +76,8 @@ internal static class AutorediSourceBuilder
     private static void GenerateGroupMethods(
         SourceBuilder builder,
         ImmutableArray<AutorediTarget> targets,
+        string assemblySuffix,
+        Dictionary<(string InterfaceType, string? ServiceKey), int> interfaceCounts,
         HashSet<string> claimedNames,
         List<Diagnostic> diagnostics)
     {
@@ -68,12 +91,13 @@ internal static class AutorediSourceBuilder
         {
             var fragment = AutorediNaming.ToIdentifierFragment(raw);
 
-            if (!string.Equals(raw, fragment, StringComparison.Ordinal))
+            if (AutorediNaming.RequiresSanitization(raw))
             {
                 diagnostics.Add(Diagnostic.Create(Diagnostics.InvalidGroupName, Location.None, raw, fragment));
             }
 
-            if (!claimedNames.Add($"{MethodPrefix}{fragment}"))
+            if (string.Equals(fragment, assemblySuffix, StringComparison.Ordinal)
+                || !claimedNames.Add($"{MethodPrefix}{fragment}"))
             {
                 diagnostics.Add(Diagnostic.Create(Diagnostics.MethodNameCollision, Location.None, fragment));
                 continue;
@@ -83,7 +107,7 @@ internal static class AutorediSourceBuilder
             builder.Method("public static", "IServiceCollection", $"{MethodPrefix}{fragment}", "this IServiceCollection services");
             builder.Block(b =>
             {
-                EmitOrdered(b, targets.Where(t => t.Group == raw));
+                EmitOrdered(b, targets.Where(t => t.Group == raw), interfaceCounts);
                 b.Line("return services;");
             });
             builder.Line();
@@ -94,13 +118,14 @@ internal static class AutorediSourceBuilder
         SourceBuilder builder,
         ImmutableArray<AutorediTarget> targets,
         string assemblyName,
+        string assemblySuffix,
+        Dictionary<(string InterfaceType, string? ServiceKey), int> interfaceCounts,
         HashSet<string> claimedNames,
         List<Diagnostic> diagnostics)
     {
-        var assemblySuffix = AutorediNaming.ToIdentifierFragment(assemblyName);
         if (!claimedNames.Add($"{MethodPrefix}{assemblySuffix}"))
         {
-            // A group method already owns this name; report so the user can rename one side.
+            // The reserved All method or a pre-existing method owns this name.
             diagnostics.Add(Diagnostic.Create(Diagnostics.MethodNameCollision, Location.None, assemblySuffix));
             return;
         }
@@ -109,32 +134,20 @@ internal static class AutorediSourceBuilder
         builder.Method("public static", "IServiceCollection", $"{MethodPrefix}{assemblySuffix}", "this IServiceCollection services");
         builder.Block(b =>
         {
-            EmitOrdered(b, targets);
+            EmitOrdered(b, targets, interfaceCounts);
             b.Line("return services;");
         });
         builder.Line();
     }
 
-    private static void EmitOrdered(SourceBuilder builder, IEnumerable<AutorediTarget> targets)
+    private static void EmitOrdered(
+        SourceBuilder builder,
+        IEnumerable<AutorediTarget> targets,
+        Dictionary<(string InterfaceType, string? ServiceKey), int> interfaceCounts)
     {
         var ordered = targets
             .OrderByDescending(t => t.Priority)
-            .ThenBy(t => t.ImplementationType, StringComparer.Ordinal)
-            .ToList();
-
-        // For interface registrations, use TryAdd when a given (serviceType, serviceKey) appears only once
-        // within this method's batch – this preserves manual-override (TryAdd checks ServiceType alone)
-        // while still allowing multiple implementations via TryAddEnumerable.
-        var interfaceCounts = new Dictionary<(string InterfaceType, string? ServiceKey), int>();
-        foreach (var target in ordered)
-        {
-            if (target.InterfaceTypes.IsEmpty) continue;
-            foreach (var iface in target.InterfaceTypes.Values)
-            {
-                var key = (iface, target.ServiceKey);
-                interfaceCounts[key] = interfaceCounts.TryGetValue(key, out var c) ? c + 1 : 1;
-            }
-        }
+            .ThenBy(t => t.ImplementationType, StringComparer.Ordinal);
 
         foreach (var target in ordered)
         {
@@ -209,7 +222,7 @@ internal static class AutorediSourceBuilder
         builder.Line("/// </summary>");
         builder.Line("/// <remarks>");
         builder.Line("/// If no groups are defined in this assembly, this method registers every service emitted by the assembly.");
-        builder.Line("/// Existing registrations are never overridden, and calling this method more than once adds no duplicates.");
+        builder.Line("/// Existing descriptors are never replaced, and calling this method more than once adds no duplicates.");
         builder.Line("/// </remarks>");
         builder.Line($"/// <param name=\"services\">The <see cref=\"global::Microsoft.Extensions.DependencyInjection.IServiceCollection\"/> to add registrations to.</param>");
         builder.Line("/// <returns>The same <paramref name=\"services\"/> instance, for chaining.</returns>");
@@ -218,7 +231,8 @@ internal static class AutorediSourceBuilder
     private static void GenerateGroupDocComment(SourceBuilder builder, string group)
     {
         builder.Line("/// <summary>");
-        builder.Line($"/// Registers the '{group}' Autoredi group from this assembly using TryAdd semantics.");
+        var escapedGroup = AutorediNaming.EscapeXmlText(group);
+        builder.Line($"/// Registers the '{escapedGroup}' Autoredi group from this assembly using TryAdd semantics.");
         builder.Line("/// </summary>");
         builder.Line("/// <remarks>");
         builder.Line("/// Only classes attributed with this group name are registered. Existing registrations");
@@ -231,11 +245,12 @@ internal static class AutorediSourceBuilder
     private static void GenerateFullAssemblyServicesDocComment(SourceBuilder builder, string assemblyName)
     {
         builder.Line("/// <summary>");
-        builder.Line($"/// Registers every Autoredi service emitted by {assemblyName} (all groups included) using TryAdd semantics.");
+        var escapedAssemblyName = AutorediNaming.EscapeXmlText(assemblyName);
+        builder.Line($"/// Registers every Autoredi service emitted by {escapedAssemblyName} (all groups included) using TryAdd semantics.");
         builder.Line("/// </summary>");
         builder.Line("/// <remarks>");
-        builder.Line("/// Equivalent to calling the default method plus every group method of this assembly.");
-        builder.Line("/// Existing registrations are never overridden, and calling this method more than once adds no duplicates.");
+        builder.Line("/// Registers the same service set as the default and group methods; ordering is calculated for this method.");
+        builder.Line("/// Existing descriptors are never replaced, and calling this method more than once adds no duplicates.");
         builder.Line("/// To include referenced assemblies as well, use <c>AddAutorediServicesAll</c> (executables only).");
         builder.Line("/// </remarks>");
         builder.Line($"/// <param name=\"services\">The <see cref=\"global::Microsoft.Extensions.DependencyInjection.IServiceCollection\"/> to add registrations to.</param>");

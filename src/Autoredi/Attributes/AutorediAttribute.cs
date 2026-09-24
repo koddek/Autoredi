@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Autoredi.Attributes;
 
 /// <summary>
-/// Marks a class for compile-time registration in the Microsoft Dependency Injection container.
+/// Marks a concrete class for compile-time registration in the Microsoft Dependency Injection container.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -15,9 +15,14 @@ namespace Autoredi.Attributes;
 /// No reflection is used at any point, so the output is trimming- and AOT-safe.
 /// </para>
 /// <para>
-/// All generated registrations use TryAdd semantics: they fill gaps and never override services
-/// registered manually before the generated method is called, and calling the same generated
-/// method twice adds no duplicate descriptors.
+/// The decorated type must be a non-static, non-abstract, non-generic class with a public
+/// constructor. The generator reports invalid implementation types as AUTOREDI012.
+/// </para>
+/// <para>
+/// All generated registrations use TryAdd semantics: they fill gaps and never replace an
+/// existing descriptor. For multiple implementations of one service type, MEDI keeps all
+/// descriptors and resolves a single service using its normal last-registration behavior.
+/// Calling the same generated method twice adds no duplicate descriptors.
 /// </para>
 /// </remarks>
 /// <example>
@@ -57,9 +62,10 @@ namespace Autoredi.Attributes;
 /// with warning AUTOREDI018.
 /// </param>
 /// <param name="priority">
-/// Higher values are emitted earlier within their group (default 0). With TryAdd semantics,
-/// emission order decides which registration fills a gap first when several target the same
-/// service type. Ties break alphabetically by implementation type name.
+/// Higher values are emitted earlier within the selected method (default 0). The generated
+/// descriptor order is deterministic and ties break alphabetically by implementation type name.
+/// When multiple implementations share a service type, MEDI's normal single-service resolution
+/// still follows the last registered descriptor; use keyed services when selection must be explicit.
 /// </param>
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
 public sealed class AutorediAttribute(
@@ -96,13 +102,14 @@ public sealed class AutorediAttribute(
     public string? Group => group;
 
     /// <summary>
-    /// Gets the registration priority (higher values are emitted first within the group).
+    /// Gets the registration priority (higher values are emitted first within the selected method).
     /// </summary>
     public int Priority => priority;
 
     /// <summary>
     /// Gets or sets the interfaces to register the class against. When provided with at least
     /// one entry it replaces <see cref="InterfaceType"/>, and no self-registration is emitted.
+    /// Duplicate interface entries are emitted once.
     /// </summary>
     /// <remarks>
     /// Each entry must be an interface implemented by the decorated class; otherwise the

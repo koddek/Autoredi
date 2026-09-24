@@ -1,8 +1,8 @@
 namespace Autoredi.Tests.Core;
 
-public class KeyedServicesTests
+public class KeyedServicesTests : IDisposable
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly ServiceProvider _serviceProvider;
 
     public KeyedServicesTests()
     {
@@ -65,7 +65,7 @@ public class KeyedServicesTests
         var imposter = ITestMessageSender.Imposter();
         var services = new ServiceCollection();
         services.AddKeyedSingleton<ITestMessageSender>(key, imposter.Instance());
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         // Act
         var sender = provider.GetKeyedService<ITestMessageSender>(key);
@@ -103,4 +103,6 @@ public class KeyedServicesTests
         // Assert
         await Assert.That(ReferenceEquals(sender1, sender2)).IsTrue();
     }
+
+    public void Dispose() => _serviceProvider.Dispose();
 }

@@ -12,15 +12,15 @@ namespace Autoredi.Benchmarks.Benchmarks;
 public class ContainerBuildBenchmarks
 {
     [Benchmark(Description = "Autoredi - AddAutorediServices")]
-    public ServiceProvider AutorediRegistration()
+    public void AutorediRegistration()
     {
         var services = new ServiceCollection();
         services.AddAutorediServices();
-        return services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
     }
 
     [Benchmark(Description = "Manual - Individual Add* calls", Baseline = true)]
-    public ServiceProvider ManualRegistration()
+    public void ManualRegistration()
     {
         var services = new ServiceCollection();
 
@@ -39,6 +39,6 @@ public class ContainerBuildBenchmarks
         services.AddKeyedSingleton<IKeyedService, ManualKeyedService2>("key2");
         services.AddKeyedSingleton<IKeyedService, ManualKeyedService3>("key3");
 
-        return services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
     }
 }

@@ -412,7 +412,7 @@ public sealed class AutorediGenerator : IIncrementalGenerator
     {
         Flow.Create(context)
             // Extract individual service registrations
-            .ForAttributeWithMetadataName<ServiceRegistration>(
+            .ForAttributeWithMetadataName(
                 "Autoredi.Attributes.AutorediAttribute")
             .Select((ctx, ct) => ExtractRegistration(ctx, ct))
             // Collect all registrations into one

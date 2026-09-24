@@ -7,9 +7,14 @@ on:
       - main
     paths:
       - 'src/**'
+      - 'tests/**'
+      - 'samples/**'
+      - 'benchmarks/**'
       - 'Directory.Build.*'
-      - 'Autoredi.sln'
+      - 'Autoredi.slnx'
       - 'README.md'
+      - 'CHANGELOG.md'
+      - 'docs/**'
       - 'LICENSE'
       - '.github/workflows/build-publish-nuget.yml'
 
@@ -36,7 +41,7 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Ensure GitHub Packages token
         env:
@@ -66,15 +71,17 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
 
-      - name: Restore Projects
-        run: |
-          dotnet restore "${{ env.MAIN_PROJECT_FILE }}"
-          dotnet restore "${{ env.GENERATOR_PROJECT_FILE }}"
+      - name: Restore Solution
+        run: dotnet restore Autoredi.slnx --force-evaluate
 
-      - name: Build Projects
-        run: |
-          dotnet build "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" --no-restore
-          dotnet build "${{ env.GENERATOR_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" --no-restore
+      - name: Build Solution
+        run: dotnet build Autoredi.slnx --configuration "${{ env.CONFIGURATION }}" --no-restore
+
+      - name: Run Tests
+        run: dotnet run --project tests/Autoredi.Tests --configuration "${{ env.CONFIGURATION }}" --no-build
+
+      - name: Run Modular Sample
+        run: dotnet run --project samples/Samples.Modular.App --configuration "${{ env.CONFIGURATION }}" --no-build
 
       - name: Pack Projects
         run: |

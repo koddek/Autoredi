@@ -1,8 +1,8 @@
 namespace Autoredi.Tests.Core;
 
-public class ServiceLifetimeTests
+public class ServiceLifetimeTests : IDisposable
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly ServiceProvider _serviceProvider;
 
     public ServiceLifetimeTests()
     {
@@ -129,4 +129,6 @@ public class ServiceLifetimeTests
         await Assert.That(() => _serviceProvider.GetRequiredService<ITestExternalService>())
             .ThrowsException();
     }
+
+    public void Dispose() => _serviceProvider.Dispose();
 }
