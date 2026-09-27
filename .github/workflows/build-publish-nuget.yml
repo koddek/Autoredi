@@ -42,13 +42,22 @@ env:
   CONFIGURATION: 'Release'
   OUTPUT_DIR: './nuget_packages'
 
-permissions:
-  contents: write
-  packages: write
+# Verification and publishing are separate jobs on purpose. Autoredi ships a source
+# generator, so a green build says nothing about whether the package is usable; keeping the
+# two apart means a publishing problem can never be mistaken for a build break, and the
+# build is proven before anything is pushed anywhere.
+#
+# NOTE: the verify job still needs GH_PACKAGES_TOKEN, because Flowgen is published only to
+# GitHub Packages and restore requires it. A secret-free build becomes possible once Flowgen
+# is on nuget.org. GITHUB_TOKEN is not a substitute: it cannot read packages belonging to a
+# different repository.
 
 jobs:
-  verify-and-publish:
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
@@ -61,49 +70,43 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # Secrets are only available to pushes on main. Pull requests and forks build unsigned,
-      # which is fine: Directory.Build.props signs whatever assemblies it can and Autoredi.csproj
-      # refuses to pack unsigned.
-      #
-      # Flowgen is only published to GitHub Packages, so this source is also what restore needs
-      # for it. GITHUB_TOKEN cannot read packages from a *different* repository, so a PAT is
-      # required; it needs read:packages for restore and write:packages for pushing.
-      - name: Configure GitHub Packages source
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # Fails here, with instructions, rather than letting restore emit NU1301/401 lines that
+      # read like a missing package instead of a missing credential.
+      - name: Authenticate to GitHub Packages
         env:
           GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
         run: |
-          if [ -z "$GH_PACKAGES_TOKEN" ]; then
-            echo "Missing GH_PACKAGES_TOKEN. Configure a PAT with read:packages and write:packages in repo secrets."
+          set -euo pipefail
+          report() {
+            echo "::error title=GitHub Packages credentials missing or invalid::$1"
+            echo "Autoredi's build restores Flowgen, which is published only to GitHub Packages."
+            echo "That feed needs a personal access token with BOTH scopes:"
+            echo "  read:packages   - to restore Flowgen"
+            echo "  write:packages  - to publish Autoredi"
+            echo "GITHUB_TOKEN cannot be used here: it cannot read packages from a different repository."
+            echo "Create or regenerate a token at https://github.com/settings/tokens, then store it"
+            echo "as the repository secret GH_PACKAGES_TOKEN:"
+            echo "  https://github.com/koddek/Autoredi/settings/secrets/actions"
+            echo "Note: pull requests from forks cannot read repository secrets, so fork builds will"
+            echo "stop at this step until Flowgen is available on nuget.org."
             exit 1
+          }
+
+          if [ -z "${GH_PACKAGES_TOKEN:-}" ]; then
+            report "GH_PACKAGES_TOKEN is empty (unset, or unavailable to a fork pull request)."
           fi
 
-          dotnet nuget remove source github || true
+          dotnet nuget remove source github >/dev/null 2>&1 || true
           dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
             --name github \
             --username "${{ github.actor }}" \
             --password "$GH_PACKAGES_TOKEN" \
             --store-password-in-clear-text
 
-          # Prove the credentials work now, instead of letting restore fail later with a
-          # wall of NU1301/401 lines that look like a package problem rather than a token one.
           if ! dotnet package search Flowgen --source github --exact-match --format json >/dev/null 2>&1; then
-            echo "::error::Cannot authenticate against GitHub Packages with GH_PACKAGES_TOKEN. Regenerate the PAT with read:packages and write:packages scopes."
-            exit 1
+            report "GitHub Packages rejected the token (401). It is revoked, expired, or missing a package scope."
           fi
           echo "GitHub Packages authentication verified."
-
-      - name: Create SNK file from secret
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: echo "${{ secrets.SNK_FILE_BASE64 }}" | base64 --decode > ${{ github.workspace }}/Autoredi.snk
-
-      - name: Extract Version
-        id: extract_version
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          VERSION=$(grep '<Version>' ${{ env.MAIN_PROJECT_FILE }} | sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted version: $VERSION"
 
       - name: Restore Solution
         run: dotnet restore Autoredi.slnx --force-evaluate
@@ -130,13 +133,61 @@ jobs:
             echo "Build artifacts are tracked in git. Remove them from the index."
             exit 1
           fi
-      - name: Pack Autoredi
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+  publish:
+    name: Publish
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Configure GitHub Packages source
+        env:
+          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
         run: |
-          dotnet pack "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" --no-build -o "${{ env.OUTPUT_DIR }}"
+          if [ -z "$GH_PACKAGES_TOKEN" ]; then
+            echo "::error::GH_PACKAGES_TOKEN is empty; cannot push to GitHub Packages."
+            exit 1
+          fi
+
+          dotnet nuget remove source github || true
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --name github \
+            --username "${{ github.actor }}" \
+            --password "$GH_PACKAGES_TOKEN" \
+            --store-password-in-clear-text
+
+      - name: Create SNK file from secret
+        run: echo "${{ secrets.SNK_FILE_BASE64 }}" | base64 --decode > ${{ github.workspace }}/Autoredi.snk
+
+      - name: Extract Version
+        id: extract_version
+        run: |
+          VERSION=$(grep '<Version>' ${{ env.MAIN_PROJECT_FILE }} | sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Restore Solution
+        run: dotnet restore ${{ env.MAIN_PROJECT_FILE }}
+
+      - name: Pack Autoredi
+        run: |
+          dotnet pack "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" -o "${{ env.OUTPUT_DIR }}"
 
       - name: Push to GitHub Packages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           dotnet nuget push "${{ env.OUTPUT_DIR }}/*.nupkg" \
             --source "https://nuget.pkg.github.com/${{ github.repository_owner }}" \
@@ -146,7 +197,6 @@ jobs:
       # nuget.org is what makes the package discoverable and auto-updatable from an IDE.
       # Skipped cleanly when no key is configured so the rest of the release still ships.
       - name: Push to nuget.org
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           VERSION: ${{ steps.extract_version.outputs.version }}
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
@@ -162,9 +212,9 @@ jobs:
             --skip-duplicate
 
       - name: Ensure the release tag exists
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          VERSION: ${{ steps.extract_version.outputs.version }}
         run: |
-          VERSION=${{ steps.extract_version.outputs.version }}
           if git rev-parse "refs/tags/v$VERSION" >/dev/null 2>&1; then
             echo "Tag v$VERSION already exists."
           else
@@ -178,7 +228,6 @@ jobs:
       # version there. No .nupkg assets on purpose: consumers restore from the NuGet feed
       # in their IDE, not from a download link.
       - name: Publish the GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.extract_version.outputs.version }}

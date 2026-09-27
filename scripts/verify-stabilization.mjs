@@ -159,8 +159,15 @@ for (const [what, needle] of [
   // only thing that puts the version next to the name.
   ["GitHub Release", "gh release create"],
   ["nuget.org publish", "https://api.nuget.org/v3/index.json"],
-  // Flowgen lives only on GitHub Packages; a bad PAT must fail loudly, not as NU1301.
-  ["GitHub Packages auth probe", "Cannot authenticate against GitHub Packages"],
+  // Flowgen lives only on GitHub Packages; a bad PAT must fail loudly and actionably,
+  // not as a wall of NU1301/401 lines during restore.
+  ["GitHub Packages auth probe", "dotnet package search Flowgen --source github"],
+  ["actionable token guidance", "read:packages   - to restore Flowgen"],
+  // Verification and publishing are separate jobs, so a publishing problem can never be
+  // mistaken for a build break.
+  ["separate verify job", "\n  verify:"],
+  ["separate publish job", "\n  publish:"],
+  ["publish gated on verify", "needs: verify"],
 ]) {
   if (!workflow.includes(needle)) {
     failures.push(`.github/workflows/build-publish-nuget.yml is missing ${what}.`);
