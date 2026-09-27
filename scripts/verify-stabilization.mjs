@@ -155,6 +155,12 @@ for (const [what, needle] of [
   ["package smoke test", "node scripts/verify-package-smoke.mjs"],
   ["artifact check", "Check for committed build artifacts"],
   ["pull request trigger", "pull_request:"],
+  // A git tag never shows up in the Releases sidebar, so the release object is the
+  // only thing that puts the version next to the name.
+  ["GitHub Release", "gh release create"],
+  ["nuget.org publish", "https://api.nuget.org/v3/index.json"],
+  // Flowgen lives only on GitHub Packages; a bad PAT must fail loudly, not as NU1301.
+  ["GitHub Packages auth probe", "Cannot authenticate against GitHub Packages"],
 ]) {
   if (!workflow.includes(needle)) {
     failures.push(`.github/workflows/build-publish-nuget.yml is missing ${what}.`);

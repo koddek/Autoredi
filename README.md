@@ -7,6 +7,8 @@
 
 Autoredi is a powerful source generator for .NET that simplifies dependency injection (DI) by automatically registering services in your Microsoft.Extensions.DependencyInjection container. With the `[Autoredi]` attribute, you can declaratively configure services with lifetimes, interfaces, and keys, reducing boilerplate and enhancing maintainability. Whether you're registering simple concrete classes, single interface implementations, or complex keyed services, Autoredi streamlines your DI setup.
 
+Autoredi is on [nuget.org](https://www.nuget.org/packages/Autoredi/), so `dotnet restore` and the IDE package manager find and update it automatically. A copy is also published to GitHub Packages for the release pipeline.
+
 ## Table of Contents
 
 - [Installation](#installation)
