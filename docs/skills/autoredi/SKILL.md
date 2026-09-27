@@ -1,6 +1,6 @@
 ---
 name: autoredi
-description: Register .NET services in Microsoft.Extensions.DependencyInjection at compile time with [Autoredi] attributes and generated extension methods (TryAdd semantics, keyed services, groups, multi-interface). Use when a project references the Autoredi NuGet package, when writing or fixing classes decorated with [Autoredi], when calling AddAutorediServices* methods, or when diagnosing AUTOREDI00x build errors.
+description: Register .NET services in Microsoft.Extensions.DependencyInjection at compile time with [Autoredi] attributes and generated extension methods (fill-gaps registration contract, keyed services, groups, multi-interface, cross-assembly aggregation). Use when a project references the Autoredi NuGet package, when writing or fixing classes decorated with [Autoredi], when calling AddAutorediServices* methods, or when diagnosing AUTOREDI00x build errors.
 ---
 
 # Autoredi
@@ -13,6 +13,8 @@ Compile-time DI registration for Microsoft.Extensions.DependencyInjection. Put `
 2. Each assembly gets `<AssemblyName>.Autoredi.AutorediServiceCollectionExtensions` (public static partial class) with extension methods on `IServiceCollection`.
 3. Consumer code must `using <AssemblyName>.Autoredi;` — child namespaces are not auto-visible.
 4. Call the generated method(s) during composition root setup.
+
+The package targets `netstandard2.0` and `net10.0`, so referencing it works from net8.0/net9.0 and older class libraries too.
 
 ## Attribute quick reference
 
@@ -45,19 +47,32 @@ Syntax rules:
 | `AddAutorediServices{Assembly}()` | Every group of this assembly. |
 | `AddAutorediServicesAll()` | Executables only: current assembly + every referenced assembly that contributes registrations (referenced assemblies are detected via their generated marker class). |
 
-## TryAdd contract
+## Registration contract
 
-Generated bodies use TryAdd semantics — they fill gaps, never override:
+Generated methods fill gaps and never replace what is already registered.
 
-- Single implementation per service type/key: `services.TryAdd(ServiceDescriptor.Scoped<IFoo, Foo>());`
-- Multiple implementations of one interface: `TryAddEnumerable` per pair so all coexist for `IEnumerable<IFoo>`.
-- Self registrations: `services.TryAddSingleton<T>();`
-- Keyed variants mirror the same split.
+Self-registration (no `interfaceType`): `services.TryAddSingleton<T>();` — the exact MEDI `TryAdd` guarantee.
 
-Consequences:
-- Manual registrations are not removed or replaced. With multiple implementations, MEDI's normal single-service resolution follows the last matching descriptor; use keyed services when selection must be explicit.
-- Double-calls are idempotent (descriptor count unchanged).
-- Priority orders generated descriptors within the selected method; it does not override MEDI's last-registration resolution.
+Interface registration (with `interfaceType` or `InterfaceTypes`): the emitted line is
+`TryAddAutorediDescriptor(services, ServiceDescriptor.<Lifetime><IFoo, Foo>());`. That helper makes one
+pass over the descriptors already registered for the same service type and key:
+
+| Already present for that service type + key | Result |
+|---|---|
+| nothing | descriptor added |
+| the same implementation type (earlier generated call, or your own `Add<IFoo, Foo>()`) | skipped, no duplicate |
+| a different implementation type (yours, or another assembly's) | added, so every implementation resolves through `IEnumerable<IFoo>` |
+| an instance or factory registration (`ImplementationType` is null) | skipped, your registration keeps winning |
+
+What this means in practice:
+- `AddAutorediServicesAll()` keeps implementations of the same interface contributed by different
+  assemblies. Interface multiplicity is judged per assembly at generation time, so the runtime check
+  is what stops one assembly's registration from being dropped as a duplicate of another's.
+- `services.AddSingleton<IFoo>(fake); services.AddAutorediServices();` keeps `fake` — the standard
+  test-seam pattern. Same for a factory registration.
+- Calling a generated method twice changes nothing.
+- Resolving a single `IFoo` still follows MEDI's last-registration order. Use keyed registrations when
+  the choice must be explicit.
 
 ## Canonical usage
 
@@ -88,8 +103,8 @@ Multi-interface in one attribute:
 ```csharp
 [Autoredi(ServiceLifetime.Scoped, InterfaceTypes = [typeof(IRepo), typeof(ICache)])]
 public sealed class RedisStore : IRepo, ICache { }
-// emits TryAdd(ServiceDescriptor.Scoped<IRepo, RedisStore>()) + same for ICache
-// (TryAddEnumerable instead when another class also implements either interface)
+// emits one TryAddAutorediDescriptor call per interface, e.g.
+//   TryAddAutorediDescriptor(services, ServiceDescriptor.Scoped<IRepo, RedisStore>());
 ```
 
 Cross-assembly selective registration from a library's generated class:
@@ -111,6 +126,10 @@ InfrastructureAutoredi.AddAutorediServicesStorage(services);     // one library 
 | AUTOREDI018 | Warning | Group name contains characters that require identifier sanitization. |
 | AUTOREDI023 | Error | Two generated methods would share a name ("All" reserved, group vs assembly fragment). Later registrations skipped until renamed. |
 
+Build-time error outside the generator: `AUTOREDI001` means `dotnet pack` ran without `Autoredi.snk`
+next to `Directory.Build.props` and would have published an unsigned package. A plain `dotnet build`
+never needs the key.
+
 Fix guidance: use a concrete implementation with a public constructor, rename the group/assembly side, implement the interface, or correct the enum value. Skipped registrations never appear in generated output — do not paper over AUTOREDI023 by hand-writing duplicate methods.
 
 ## Gotchas
@@ -119,8 +138,11 @@ Fix guidance: use a concrete implementation with a public constructor, rename th
 - The decorated type must be a concrete, non-generic class with a public constructor.
 - An assembly whose method fragment would be `All` uses the `AddAutorediServicesAllAssembly` fallback for its assembly-wide method.
 - `AddAutorediServicesAll()` exists only in executable projects; libraries must aggregate explicitly or expose their own methods.
+- It only aggregates **direct** referenced assemblies, one level deep. For a deeper graph, call each contributing generated class explicitly.
 - Group methods are per-assembly by design; there is no automatic cross-assembly group fan-out.
 - MEDI resolves each service type independently — two interfaces backed by one singleton class produce two instances unless you register an instance manually (standard MEDI behavior, not an Autoredi quirk).
+- `Priority` orders descriptors inside one generated method. It does not decide which implementation MEDI returns for a single service; use keyed registrations for that.
+- A generated interface registration is skipped when you already registered that service type with an instance or a factory. That is deliberate, but it also means adding a factory for `IFoo` silently disables every generated `IFoo` registration in the container.
 
 ## Verify changes
 
