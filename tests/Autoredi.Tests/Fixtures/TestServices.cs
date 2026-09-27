@@ -31,6 +31,17 @@ public class TestLogService : ITestLogService
 }
 
 /// <summary>
+/// Hand-registered implementation of <see cref="ITestLogService"/> that carries no [Autoredi]
+/// attribute, used to check how generated registrations interact with manual ones.
+/// </summary>
+public class ManualLogService : ITestLogService
+{
+    public void Log(string message)
+    {
+    }
+}
+
+/// <summary>
 /// Interface and implementation for scoped service
 /// </summary>
 public interface ITestSessionService

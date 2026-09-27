@@ -11,18 +11,16 @@
 
     <ItemGroup>
         <PackageReference Include="Imposter" Version="0.1.11" />
-        <PackageReference Include="TUnit" Version="1.69.0" />
+        <PackageReference Include="TUnit" Version="1.70.1" />
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
         <!-- Runtime dependency of Autoredi.Generators; needed when driving the generator directly. -->
-        <PackageReference Include="Flowgen" Version="0.11.0" />
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
-        <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
+        <PackageReference Include="Flowgen" Version="$(FlowgenVersion)" />
     </ItemGroup>
 
     <!-- Reference the main project -->
     <ItemGroup>
         <ProjectReference Include="..\..\src\Autoredi\Autoredi.csproj" />
+        <ProjectReference Include="..\..\samples\Samples.Common\Samples.Common.csproj" />
         <ProjectReference Include="..\..\samples\Samples.Modular.Infrastructure\Samples.Modular.Infrastructure.csproj" />
     </ItemGroup>
 
@@ -34,5 +32,4 @@
             <HintPath>..\..\src\Autoredi.Generators\bin\$(Configuration)\netstandard2.0\Autoredi.Generators.dll</HintPath>
         </Reference>
     </ItemGroup>
-
 </Project>

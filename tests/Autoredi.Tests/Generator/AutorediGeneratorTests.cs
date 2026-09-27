@@ -23,9 +23,9 @@ public class AutorediGeneratorTests
     }
 
     [Test]
-    public async Task SingleInterface_UsesTryAdd()
+    public async Task SingleInterface_EmitsGuardedTryAddEnumerable()
     {
-        var (_, sources) = GeneratorTestHarness.Run("""
+        var (diagnostics, sources) = GeneratorTestHarness.Run("""
             namespace Probe;
 
             public interface IFoo { }
@@ -34,10 +34,14 @@ public class AutorediGeneratorTests
             public class FooImpl : IFoo { }
             """);
 
-        // Single implementation per (serviceType, key) uses TryAdd so manual registrations are preserved
+        // Interface registrations go through a helper instead of a bare TryAdd: a per-assembly
+        // TryAdd drops implementations contributed by other assemblies, while a bare
+        // TryAddEnumerable lets a generated descriptor outrank a hand-written one.
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "services.TryAdd(ServiceDescriptor.Scoped<global::Probe.IFoo, global::Probe.FooImpl>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, ServiceDescriptor.Scoped<global::Probe.IFoo, global::Probe.FooImpl>());")).IsTrue();
+        await Assert.That(GeneratorTestHarness.SourceContains(sources, "private static void TryAddAutorediDescriptor(")).IsTrue();
+        await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
     }
 
     [Test]
@@ -57,10 +61,10 @@ public class AutorediGeneratorTests
 
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "services.TryAdd(ServiceDescriptor.Singleton<global::Probe.IRepo, global::Probe.Store>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, ServiceDescriptor.Singleton<global::Probe.IRepo, global::Probe.Store>());")).IsTrue();
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "services.TryAdd(ServiceDescriptor.Singleton<global::Probe.ICache, global::Probe.Store>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, ServiceDescriptor.Singleton<global::Probe.ICache, global::Probe.Store>());")).IsTrue();
         // Interfaces-only: no self registration when interfaces are requested.
         await Assert.That(GeneratorTestHarness.SourceContains(sources, "TryAddSingleton<global::Probe.Store>()")).IsFalse();
     }
@@ -82,14 +86,14 @@ public class AutorediGeneratorTests
 
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "services.TryAddEnumerable(ServiceDescriptor.Transient<global::Probe.IRepo, global::Probe.RepoA>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, ServiceDescriptor.Transient<global::Probe.IRepo, global::Probe.RepoA>());")).IsTrue();
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "services.TryAddEnumerable(ServiceDescriptor.Transient<global::Probe.IRepo, global::Probe.RepoB>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, ServiceDescriptor.Transient<global::Probe.IRepo, global::Probe.RepoB>());")).IsTrue();
     }
 
     [Test]
-    public async Task KeyedService_EmitsKeyedEnumerableWithEscapedKey()
+    public async Task KeyedService_EmitsGuardedKeyedDescriptorWithEscapedKey()
     {
         var (_, sources) = GeneratorTestHarness.Run("""
             namespace Probe;
@@ -106,6 +110,22 @@ public class AutorediGeneratorTests
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
             "ServiceDescriptor.KeyedTransient<global::Probe.ISender, global::Probe.Sender>(\"quote\\\"and\\\\slash\")")).IsTrue();
+    }
+
+    [Test]
+    public async Task SelfRegistrationOnly_DoesNotEmitTheInterfaceHelper()
+    {
+        var (diagnostics, sources) = GeneratorTestHarness.Run("""
+            namespace Probe;
+
+            [global::Autoredi.Attributes.Autoredi]
+            public class Config { }
+            """);
+
+        // The helper only exists to disambiguate interface registrations; emitting it for
+        // self-registration-only assemblies would just be dead code.
+        await Assert.That(GeneratorTestHarness.SourceContains(sources, "TryAddAutorediDescriptor")).IsFalse();
+        await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
     }
 
     [Test]
@@ -324,6 +344,7 @@ public class AutorediGeneratorTests
         var source = sources[Main];
         var descriptor = "ServiceDescriptor.Singleton<global::Probe.IFoo, global::Probe.Store>()";
         await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
+        // Once per generated method that registers this target (default + assembly-wide).
         await Assert.That(source.Split(descriptor, StringSplitOptions.None).Length - 1).IsEqualTo(2);
     }
 

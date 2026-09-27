@@ -12,8 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
-    <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
-    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
+    <!-- Shared contracts implemented by more than one assembly. -->
+    <ProjectReference Include="../Samples.Common/Samples.Common.csproj" />
   </ItemGroup>
 </Project>

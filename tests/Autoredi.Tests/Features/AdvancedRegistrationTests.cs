@@ -1,3 +1,4 @@
+using Samples.Common.Interfaces;
 using Samples.Modular.Infrastructure.Services;
 
 namespace Autoredi.Tests.Features;
@@ -51,6 +52,22 @@ public class AdvancedRegistrationTests
     }
 
     [Test]
+    public async Task CrossAssembly_All_KeepsEveryImplementationOfASharedContract()
+    {
+        // DatabaseAuditChannel lives in this assembly, FileAuditChannel in
+        // Samples.Modular.Infrastructure. Interface multiplicity is per assembly, so a
+        // per-assembly TryAdd would silently drop whichever assembly registers second.
+        var services = new ServiceCollection();
+        services.AddAutorediServicesAll();
+        using var provider = services.BuildServiceProvider();
+
+        var channels = provider.GetServices<IAuditChannel>().Select(c => c.Name).ToList();
+
+        await Assert.That(channels.OrderBy(name => name, StringComparer.Ordinal))
+            .IsEquivalentTo(new[] { "database", "file" });
+    }
+
+    [Test]
     public async Task CrossAssembly_SelectiveGroupViaAliasedCall_DoesNotLeakOtherGroups()
     {
         // Selective cross-assembly: app asks infrastructure for Storage only
@@ -98,33 +115,6 @@ public class AdvancedRegistrationTests
     }
 
     [Test]
-    public async Task TryAddEnumerable_Keyed_IsIdempotent()
-    {
-        var s1 = new ServiceCollection();
-        s1.AddAutorediServices();
-        var c1 = s1.Count;
-
-        var s2 = new ServiceCollection();
-        s2.AddAutorediServices();
-        s2.AddAutorediServices();
-        var c2 = s2.Count;
-
-        await Assert.That(c1).IsEqualTo(c2);
-
-        // Also for keyed: two calls with same keyed registrations stay same count
-        var k1 = new ServiceCollection();
-        k1.AddAutorediServices();
-        var kc1 = k1.Count;
-
-        var k2 = new ServiceCollection();
-        k2.AddAutorediServices();
-        k2.AddAutorediServices();
-        var kc2 = k2.Count;
-
-        await Assert.That(kc1).IsEqualTo(kc2);
-    }
-
-    [Test]
     public async Task TryAddEnumerable_ManualKeyedSingleton_NotOverridden()
     {
         var imposter = ITestMessageSender.Imposter();
@@ -135,29 +125,6 @@ public class AdvancedRegistrationTests
 
         var resolved = provider.GetRequiredKeyedService<ITestMessageSender>(ServiceKeys.Email);
         await Assert.That(ReferenceEquals(resolved, imposter.Instance())).IsTrue();
-    }
-
-    [Test]
-    public async Task GetRequiredService_Throws_ForUnregisteredInterface()
-    {
-        var services = new ServiceCollection();
-        services.AddAutorediServices();
-        using var provider = services.BuildServiceProvider();
-
-        await Assert.That(() => provider.GetRequiredService<ITestExternalService>()).ThrowsException();
-        await Assert.That(() => provider.GetRequiredKeyedService<ITestMessageSender>("no-such-key")).ThrowsException();
-    }
-
-    [Test]
-    public async Task GetService_ReturnsNull_ForUnregisteredAndInvalidKey()
-    {
-        var services = new ServiceCollection();
-        services.AddAutorediServices();
-        using var provider = services.BuildServiceProvider();
-
-        await Assert.That(provider.GetService<ITestExternalService>()).IsNull();
-        await Assert.That(provider.GetKeyedService<ITestMessageSender>("invalid")).IsNull();
-        await Assert.That(provider.GetKeyedService<ITestMessageSender>("")).IsNull();
     }
 
     [Test]

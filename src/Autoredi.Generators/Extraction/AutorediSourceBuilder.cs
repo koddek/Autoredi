@@ -26,7 +26,6 @@ internal static class AutorediSourceBuilder
         builder.Namespace(@namespace);
 
         var validTargets = targets.Where(t => t.IsValid).ToImmutableArray();
-        var interfaceCounts = CountInterfaces(validTargets);
         // "All" is reserved for the cross-assembly aggregator emitted by AutorediAllServicesBuilder.
         var claimedNames = new HashSet<string>(StringComparer.Ordinal) { $"{MethodPrefix}All" };
         var assemblySuffix = AutorediNaming.ToAssemblyMethodSuffix(assemblyName);
@@ -34,40 +33,68 @@ internal static class AutorediSourceBuilder
         builder.Class("public static partial", "AutorediServiceCollectionExtensions");
         builder.Block(b =>
         {
-            GenerateDefaultServicesMethod(b, validTargets, interfaceCounts);
-            GenerateGroupMethods(b, validTargets, assemblySuffix, interfaceCounts, claimedNames, diagnostics);
-            GenerateAssemblyWideServicesMethod(b, validTargets, assemblyName, assemblySuffix, interfaceCounts, claimedNames, diagnostics);
+            if (validTargets.Any(t => !t.InterfaceTypes.IsEmpty))
+            {
+                GenerateTryAddHelper(b);
+            }
+
+            GenerateDefaultServicesMethod(b, validTargets);
+            GenerateGroupMethods(b, validTargets, assemblySuffix, claimedNames, diagnostics);
+            GenerateAssemblyWideServicesMethod(b, validTargets, assemblyName, assemblySuffix, claimedNames, diagnostics);
         });
 
         return new GeneratedResult(builder.ToString(), diagnostics.ToImmutableArray());
     }
 
-    private static Dictionary<(string InterfaceType, string? ServiceKey), int> CountInterfaces(
-        ImmutableArray<AutorediTarget> targets)
+    /// <summary>
+    /// Emits the single helper every interface registration goes through. Interface
+    /// multiplicity is per assembly, so a plain TryAdd drops an implementation another
+    /// assembly contributed, and a plain TryAddEnumerable lets a generated descriptor
+    /// outrank a hand-written one. One pass separates the cases: a descriptor with no
+    /// implementation type is an instance or factory registration, so a human already
+    /// decided what resolves; an identical implementation type is a duplicate; anything
+    /// else is another implementation and is kept.
+    /// </summary>
+    private static void GenerateTryAddHelper(SourceBuilder builder)
     {
-        var counts = new Dictionary<(string InterfaceType, string? ServiceKey), int>();
-        foreach (var target in targets)
+        builder.Method("private static", "void", "TryAddAutorediDescriptor", "IServiceCollection services, ServiceDescriptor descriptor");
+        builder.Block(b =>
         {
-            foreach (var interfaceType in target.InterfaceTypes.Values)
+            b.Line("for (var index = 0; index < services.Count; index++)");
+            b.Block(loop =>
             {
-                var key = (interfaceType, target.ServiceKey);
-                counts[key] = counts.TryGetValue(key, out var count) ? count + 1 : 1;
-            }
-        }
-
-        return counts;
+                loop.Line("var existing = services[index];");
+                loop.Line("if (existing.ServiceType != descriptor.ServiceType || !object.Equals(existing.ServiceKey, descriptor.ServiceKey))");
+                loop.Block(mismatch =>
+                {
+                    mismatch.Line("continue;");
+                });
+                loop.Line();
+                loop.Line("// ImplementationType is null for instance and factory registrations, so a");
+                loop.Line("// hand-written one owns this service type and key. The same implementation type");
+                loop.Line("// is a duplicate. Any other implementation type is kept so implementations");
+                loop.Line("// contributed by other assemblies survive the aggregate.");
+                loop.Line("if (existing.ImplementationType is null || existing.ImplementationType == descriptor.ImplementationType)");
+                loop.Block(decided =>
+                {
+                    decided.Line("return;");
+                });
+            });
+            b.Line();
+            b.Line("services.Add(descriptor);");
+        });
+        builder.Line();
     }
 
     private static void GenerateDefaultServicesMethod(
         SourceBuilder builder,
-        ImmutableArray<AutorediTarget> targets,
-        Dictionary<(string InterfaceType, string? ServiceKey), int> interfaceCounts)
+        ImmutableArray<AutorediTarget> targets)
     {
         GenerateDefaultServicesDocComment(builder);
         builder.Method("public static", "IServiceCollection", MethodPrefix, "this IServiceCollection services");
         builder.Block(b =>
         {
-            EmitOrdered(b, targets.Where(t => string.IsNullOrEmpty(t.Group)), interfaceCounts);
+            EmitOrdered(b, targets.Where(t => string.IsNullOrEmpty(t.Group)));
             b.Line("return services;");
         });
         builder.Line();
@@ -77,7 +104,6 @@ internal static class AutorediSourceBuilder
         SourceBuilder builder,
         ImmutableArray<AutorediTarget> targets,
         string assemblySuffix,
-        Dictionary<(string InterfaceType, string? ServiceKey), int> interfaceCounts,
         HashSet<string> claimedNames,
         List<Diagnostic> diagnostics)
     {
@@ -107,7 +133,7 @@ internal static class AutorediSourceBuilder
             builder.Method("public static", "IServiceCollection", $"{MethodPrefix}{fragment}", "this IServiceCollection services");
             builder.Block(b =>
             {
-                EmitOrdered(b, targets.Where(t => t.Group == raw), interfaceCounts);
+                EmitOrdered(b, targets.Where(t => t.Group == raw));
                 b.Line("return services;");
             });
             builder.Line();
@@ -119,7 +145,6 @@ internal static class AutorediSourceBuilder
         ImmutableArray<AutorediTarget> targets,
         string assemblyName,
         string assemblySuffix,
-        Dictionary<(string InterfaceType, string? ServiceKey), int> interfaceCounts,
         HashSet<string> claimedNames,
         List<Diagnostic> diagnostics)
     {
@@ -134,16 +159,13 @@ internal static class AutorediSourceBuilder
         builder.Method("public static", "IServiceCollection", $"{MethodPrefix}{assemblySuffix}", "this IServiceCollection services");
         builder.Block(b =>
         {
-            EmitOrdered(b, targets, interfaceCounts);
+            EmitOrdered(b, targets);
             b.Line("return services;");
         });
         builder.Line();
     }
 
-    private static void EmitOrdered(
-        SourceBuilder builder,
-        IEnumerable<AutorediTarget> targets,
-        Dictionary<(string InterfaceType, string? ServiceKey), int> interfaceCounts)
+    private static void EmitOrdered(SourceBuilder builder, IEnumerable<AutorediTarget> targets)
     {
         var ordered = targets
             .OrderByDescending(t => t.Priority)
@@ -151,11 +173,11 @@ internal static class AutorediSourceBuilder
 
         foreach (var target in ordered)
         {
-            EmitTarget(builder, target, interfaceCounts);
+            EmitTarget(builder, target);
         }
     }
 
-    private static void EmitTarget(SourceBuilder builder, AutorediTarget target, Dictionary<(string InterfaceType, string? ServiceKey), int> interfaceCounts)
+    private static void EmitTarget(SourceBuilder builder, AutorediTarget target)
     {
         var keyLiteral = target.ServiceKey is null
             ? null
@@ -196,22 +218,13 @@ internal static class AutorediSourceBuilder
             _ => "Transient"
         };
 
+        // Every interface registration goes through TryAddAutorediDescriptor so that
+        // implementations contributed by other assemblies are never dropped as duplicates.
         foreach (var interfaceType in target.InterfaceTypes.Values)
         {
-            var count = interfaceCounts[(interfaceType, target.ServiceKey)];
-            var useEnumerable = count > 1;
-            if (useEnumerable)
-            {
-                builder.Line(keyLiteral is null
-                    ? $"services.TryAddEnumerable(ServiceDescriptor.{factory}<{interfaceType}, {target.ImplementationType}>());"
-                    : $"services.TryAddEnumerable(ServiceDescriptor.Keyed{factory}<{interfaceType}, {target.ImplementationType}>({keyLiteral}));");
-            }
-            else
-            {
-                builder.Line(keyLiteral is null
-                    ? $"services.TryAdd(ServiceDescriptor.{factory}<{interfaceType}, {target.ImplementationType}>());"
-                    : $"services.TryAdd(ServiceDescriptor.Keyed{factory}<{interfaceType}, {target.ImplementationType}>({keyLiteral}));");
-            }
+            builder.Line(keyLiteral is null
+                ? $"TryAddAutorediDescriptor(services, ServiceDescriptor.{factory}<{interfaceType}, {target.ImplementationType}>());"
+                : $"TryAddAutorediDescriptor(services, ServiceDescriptor.Keyed{factory}<{interfaceType}, {target.ImplementationType}>({keyLiteral}));");
         }
     }
 
@@ -223,6 +236,9 @@ internal static class AutorediSourceBuilder
         builder.Line("/// <remarks>");
         builder.Line("/// If no groups are defined in this assembly, this method registers every service emitted by the assembly.");
         builder.Line("/// Existing descriptors are never replaced, and calling this method more than once adds no duplicates.");
+        builder.Line("/// Every implementation of an interface is kept, including implementations contributed by other");
+        builder.Line("/// assemblies, so <c>IEnumerable&lt;T&gt;</c> resolves them all. Resolving a single <c>T</c> still follows");
+        builder.Line("/// MEDI's normal last-registration behavior; use keyed registrations when selection must be explicit.");
         builder.Line("/// </remarks>");
         builder.Line($"/// <param name=\"services\">The <see cref=\"global::Microsoft.Extensions.DependencyInjection.IServiceCollection\"/> to add registrations to.</param>");
         builder.Line("/// <returns>The same <paramref name=\"services\"/> instance, for chaining.</returns>");

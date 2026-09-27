@@ -40,6 +40,8 @@ internal static class AutorediAllServicesBuilder
         builder.Line("/// <remarks>");
         builder.Line("/// Delegates to each contributing assembly's generated extension method, preserving that");
         builder.Line("/// assembly's emission order (current assembly first, then referenced assemblies alphabetically).");
+        builder.Line("/// Because interface registrations use TryAddEnumerable, implementations of the same interface");
+        builder.Line("/// coming from different assemblies are all kept and resolve through <c>IEnumerable&lt;T&gt;</c>.");
         builder.Line("/// Emitted only for executable projects. Existing descriptors are never replaced, and calling");
         builder.Line("/// this method more than once adds no duplicates.");
         builder.Line("/// </remarks>");

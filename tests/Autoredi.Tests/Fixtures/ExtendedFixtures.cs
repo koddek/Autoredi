@@ -1,5 +1,6 @@
 using Autoredi.Attributes;
 using Microsoft.Extensions.DependencyInjection;
+using Samples.Common.Interfaces;
 
 namespace Autoredi.Tests.Fixtures;
 
@@ -66,3 +67,11 @@ public interface ISelfCheck { }
 
 [Autoredi(ServiceLifetime.Transient, typeof(ISelfCheck))]
 public class SelfCheckImpl : ISelfCheck { }
+
+// --- Contract shared with another assembly (Samples.Modular.Infrastructure also
+//     implements IAuditChannel) so the aggregate must keep both implementations. ---
+[Autoredi(ServiceLifetime.Transient, typeof(IAuditChannel))]
+public class DatabaseAuditChannel : IAuditChannel
+{
+    public string Name => "database";
+}
