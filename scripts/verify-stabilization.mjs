@@ -1,9 +1,19 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
+const read = (relativePath) => {
+  const full = join(repoRoot, relativePath);
+  if (!existsSync(full)) {
+    throw new Error(
+      `verify-stabilization.mjs cannot read ${relativePath}: the file does not exist. ` +
+        `If it is intentionally untracked, it must not be used as a verification target.`,
+    );
+  }
+  return readFileSync(full, "utf8");
+};
 
 const failures = [];
 const require_ = (relativePath, expected) => {
@@ -44,6 +54,56 @@ const projectFiles = () => {
   walk(repoRoot);
   return found;
 };
+
+// ---------------------------------------------------------------------------
+// Preflight: every file the content checks depend on must be tracked by git.
+//
+// AGENTS.md is deliberately untracked (the "AI" section of .gitignore), so a verifier that
+// reads it passes on a developer machine and fails in CI, where the file simply is not
+// there. This is not hypothetical: the verifier did exactly that and turned a green build
+// red with ENOENT. Anything asserted on below must exist in a fresh checkout.
+// ---------------------------------------------------------------------------
+const verificationTargets = [
+  ".github/workflows/build-publish-nuget.yml",
+  "LICENSE",
+  "README.md",
+  "CHANGELOG.md",
+  "Directory.Build.props",
+  "docs/skills/autoredi/SKILL.md",
+  "benchmarks/Autoredi.Benchmarks/Benchmarks/ComprehensiveRegistrationBenchmarks.cs",
+  "benchmarks/Autoredi.Benchmarks/Benchmarks/GroupingBenchmarks.cs",
+  "src/Autoredi/Autoredi.csproj",
+  "src/Autoredi.Generators/Autoredi.Generators.csproj",
+  "src/Autoredi.Generators/AutorediGenerator.cs",
+  "src/Autoredi.Generators/AutorediNaming.cs",
+  "src/Autoredi.Generators/Names.cs",
+  "src/Autoredi.Generators/Diagnostics.cs",
+  "src/Autoredi.Generators/Extraction/ServiceRegistrationExtractor.cs",
+  "src/Autoredi.Generators/Extraction/AutorediSourceBuilder.cs",
+];
+
+const isTracked = (file) => {
+  try {
+    execFileSync("git", ["ls-files", "--error-unmatch", "--", file], {
+      cwd: repoRoot,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+for (const file of verificationTargets) {
+  if (!existsSync(join(repoRoot, file))) {
+    failures.push(`verification target is missing: ${file}`);
+  } else if (!isTracked(file)) {
+    failures.push(
+      `verification target is not tracked by git: ${file}. It will not exist in CI, ` +
+        `so asserting on it fails the build for a non-existent reason.`,
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Generator contracts
@@ -219,7 +279,6 @@ if (skill.includes("## TryAdd contract")) {
   failures.push("docs/skills/autoredi/SKILL.md still documents the old TryAdd contract section.");
 }
 
-require_("AGENTS.md", "AUTOREDI012");
 require_("LICENSE", "MIT License");
 
 // ---------------------------------------------------------------------------
