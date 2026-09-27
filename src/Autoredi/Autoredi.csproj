@@ -6,7 +6,7 @@
              libraries reference Autoredi; the generator itself stays netstandard2.0. -->
         <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
         <PackageId>Autoredi</PackageId>
-        <Version>0.5.3</Version>
+        <Version>0.6.0</Version>
         <IsPackable>true</IsPackable>
         <!-- No GeneratePackageOnBuild: pack is an explicit, verified step (CI and
              scripts/verify-package-smoke.mjs both call dotnet pack). Building the solution must
