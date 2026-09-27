@@ -1,78 +1,226 @@
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
-const requireText = (relativePath, expected) => {
-  const source = read(relativePath);
-  if (!source.includes(expected)) {
-    throw new Error(`${relativePath} is missing required text: ${expected}`);
+
+const failures = [];
+const require_ = (relativePath, expected) => {
+  if (!read(relativePath).includes(expected)) {
+    failures.push(`${relativePath} is missing required text: ${expected}`);
   }
 };
-const rejectText = (relativePath, forbidden) => {
-  const source = read(relativePath);
-  if (source.includes(forbidden)) {
-    throw new Error(`${relativePath} contains stale text: ${forbidden}`);
+const reject = (relativePath, forbidden) => {
+  if (read(relativePath).includes(forbidden)) {
+    failures.push(`${relativePath} contains stale text: ${forbidden}`);
   }
 };
+const requireMatch = (relativePath, pattern, why) => {
+  if (!pattern.test(read(relativePath))) {
+    failures.push(`${relativePath} ${why}`);
+  }
+};
+const rejectMatch = (relativePath, pattern) => {
+  if (pattern.test(read(relativePath))) {
+    failures.push(`${relativePath} contains a forbidden pattern: ${pattern}`);
+  }
+};
+const projectFiles = () => {
+  const found = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      if (entry === "bin" || entry === "obj" || entry === ".git" || entry === "graft") {
+        continue;
+      }
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        walk(full);
+      } else if (entry.endsWith(".csproj") || entry.endsWith(".props") || entry.endsWith(".targets")) {
+        found.push(relative(repoRoot, full));
+      }
+    }
+  };
+  walk(repoRoot);
+  return found;
+};
 
-requireText("src/Autoredi.Generators/AutorediGenerator.cs", "Flow.Create()");
-requireText("src/Autoredi.Generators/AutorediGenerator.cs", ".ForAttributeWithMetadataName(Names.AutorediAttFullName)");
-rejectText("src/Autoredi.Generators/AutorediGenerator.cs", "ForAttributeWithMetadataName<");
-requireText("src/Autoredi.Generators/AutorediNaming.cs", "ToNamespace");
-requireText("src/Autoredi.Generators/AutorediNaming.cs", "ToAssemblyMethodSuffix");
-requireText("src/Autoredi.Generators/AutorediNaming.cs", "EscapeXmlText");
-requireText("src/Autoredi.Generators/Extraction/ServiceRegistrationExtractor.cs", "ValidateImplementationType");
-requireText("src/Autoredi.Generators/Extraction/AutorediSourceBuilder.cs", "CountInterfaces");
-requireText("src/Autoredi.Generators/Diagnostics.cs", "AUTOREDI012");
+// ---------------------------------------------------------------------------
+// Generator contracts
+// ---------------------------------------------------------------------------
+const allGeneratorSources = [
+  "src/Autoredi.Generators/AutorediGenerator.cs",
+  "src/Autoredi.Generators/AutorediNaming.cs",
+  "src/Autoredi.Generators/Names.cs",
+  "src/Autoredi.Generators/Extraction/ServiceRegistrationExtractor.cs",
+  "src/Autoredi.Generators/Extraction/AutorediSourceBuilder.cs",
+  "src/Autoredi.Generators/Extraction/AutorediAllServicesBuilder.cs",
+].map(read);
 
-const projectFiles = [
-  "Directory.Build.props",
-  "src/Autoredi/Autoredi.csproj",
-  "src/Autoredi.Generators/Autoredi.Generators.csproj",
-  "tests/Autoredi.Tests/Autoredi.Tests.csproj",
-  "benchmarks/Autoredi.Benchmarks/Autoredi.Benchmarks.csproj",
-  "samples/Samples.Basic/Samples.Basic.csproj",
-  "samples/Samples.Complete/Samples.Complete.csproj",
-  "samples/Samples.Common/Samples.Common.csproj",
-  "samples/Samples.KeyedServices/Samples.KeyedServices.csproj",
-  "samples/Samples.Modular.App/Samples.Modular.App.csproj",
-  "samples/Samples.Modular.Infrastructure/Samples.Modular.Infrastructure.csproj",
-  "samples/Samples.SingleInterface/Samples.SingleInterface.csproj",
-];
-for (const projectFile of projectFiles) {
-  rejectText(projectFile, "Version=\"8.0.0\"");
-  rejectText(projectFile, "Version=\"10.0.2\"");
-  rejectText(projectFile, "Version=\"10.0.11\"");
-  rejectText(projectFile, "Version=\"10.0.400\"");
-  rejectText(projectFile, "Version=\"1.65.68\"");
-  rejectText(projectFile, "Version=\"*\"");
+require_("src/Autoredi.Generators/AutorediGenerator.cs", "Flow.Create()");
+require_("src/Autoredi.Generators/AutorediGenerator.cs", ".ForAttributeWithMetadataName(Names.AutorediAttFullName)");
+reject("src/Autoredi.Generators/AutorediGenerator.cs", "ForAttributeWithMetadataName<");
+require_("src/Autoredi.Generators/AutorediNaming.cs", "ToNamespace");
+require_("src/Autoredi.Generators/AutorediNaming.cs", "ToAssemblyMethodSuffix");
+require_("src/Autoredi.Generators/AutorediNaming.cs", "EscapeXmlText");
+require_("src/Autoredi.Generators/Extraction/ServiceRegistrationExtractor.cs", "ValidateImplementationType");
+require_("src/Autoredi.Generators/Diagnostics.cs", "AUTOREDI012");// Interface registrations must go through the runtime-guarded helper. A per-assembly
+// multiplicity check is what used to drop implementations contributed by other assemblies.
+require_("src/Autoredi.Generators/Extraction/AutorediSourceBuilder.cs", "TryAddAutorediDescriptor");
+reject("src/Autoredi.Generators/Extraction/AutorediSourceBuilder.cs", "CountInterfaces");
+reject("src/Autoredi.Generators/Extraction/AutorediSourceBuilder.cs", "interfaceCounts");
+
+// Every diagnostic descriptor must have a live reporting path. The generator reports through
+// the descriptor fields (Diagnostics.X.Id), so field usage is what has to be checked.
+const diagnosticsPath = "src/Autoredi.Generators/Diagnostics.cs";
+const descriptorFields = [...read(diagnosticsPath).matchAll(/public static readonly DiagnosticDescriptor (\w+)/g)].map(
+  (match) => match[1],
+);
+if (descriptorFields.length === 0) {
+  failures.push(`${diagnosticsPath} declares no diagnostic descriptors.`);
 }
-requireText("Directory.Build.props", "Version=\"10.0.12\"");
-requireText("Directory.Build.props", "Version=\"10.0.401\"");
-requireText("tests/Autoredi.Tests/Autoredi.Tests.csproj", "Version=\"1.69.0\"");
-requireText("tests/Autoredi.Tests/Autoredi.Tests.csproj", "Version=\"0.1.11\"");
+for (const field of descriptorFields) {
+  const referenced = allGeneratorSources.some((source) => source.includes(`Diagnostics.${field}`));
+  if (!referenced) {
+    failures.push(`${diagnosticsPath} declares ${field} but nothing reports it. Delete the dead descriptor.`);
+  }
+}
 
-requireText(".github/workflows/build-publish-nuget.yml", "dotnet-version: '10.0.x'");
-requireText(".github/workflows/build-publish-nuget.yml", "dotnet restore Autoredi.slnx");
-requireText(".github/workflows/build-publish-nuget.yml", "dotnet run --project tests/Autoredi.Tests");
-requireText(".github/workflows/build-publish-nuget.yml", "dotnet run --project samples/Samples.Modular.App");
+// ---------------------------------------------------------------------------
+// Dependency hygiene: one place to bump, no floating versions, no empty groups
+// ---------------------------------------------------------------------------
+const centrallyManaged = [
+  "Microsoft.Extensions.DependencyInjection",
+  "Microsoft.Extensions.DependencyInjection.Abstractions",
+  "Microsoft.SourceLink.GitHub",
+];
+const allProjects = projectFiles();
+const centralProps = "Directory.Build.props";
 
-requireText("README.md", "Microsoft.Extensions.DependencyInjection");
-requireText("README.md", "using MyApp.Autoredi;");
-requireText("README.md", "AUTOREDI012");
-requireText("README.md", "last-registration");
-rejectText("README.md", "services.AddSingleton<AppConfig>()");
-rejectText("README.md", "services.AddTransient<ILogger, ConsoleLogger>()");
-rejectText("README.md", "Use Transient (0), Scoped (1), or Singleton (2)");
-requireText("docs/skills/autoredi/SKILL.md", "AUTOREDI012");
-requireText("docs/skills/autoredi/SKILL.md", "last-registration");
-requireText("AGENTS.md", "AUTOREDI012");
-requireText("LICENSE", "MIT License");
+for (const file of allProjects) {
+  const source = read(file);
+  if (/Version\s*=\s*"\*"/.test(source)) {
+    failures.push(`${file} uses a floating PackageReference version.`);
+  }
+  if (/<ItemGroup>\s*<\/ItemGroup>/.test(source)) {
+    failures.push(`${file} contains an empty ItemGroup.`);
+  }
+  for (const packageId of centrallyManaged) {
+    const managedCentrally = file === centralProps;
+    const declares = new RegExp(`PackageReference (?:Include|Update)="${packageId.replace(/\./g, "\\.")}"`);
+    if (managedCentrally !== declares.test(source)) {
+      failures.push(
+        managedCentrally
+          ? `${file} is missing the central ${packageId} version.`
+          : `${file} pins ${packageId} again; it is managed in ${centralProps} only.`,
+      );
+    }
+  }
+  if (file !== centralProps && /Include="Flowgen"\s+Version="[\d.]+"/.test(source)) {
+    failures.push(`${file} hardcodes a Flowgen version; use $(FlowgenVersion) from ${centralProps}.`);
+  }
+}
+requireMatch(centralProps, /<FlowgenVersion>[\d.]+<\/FlowgenVersion>/, "must declare the single Flowgen version");
 
-requireText("benchmarks/Autoredi.Benchmarks/Benchmarks/ComprehensiveRegistrationBenchmarks.cs", "AddAutorediServicesAutorediBenchmarks");
-requireText("benchmarks/Autoredi.Benchmarks/Benchmarks/GroupingBenchmarks.cs", "AddAutorediServicesAutorediBenchmarks");
-requireText("benchmarks/Autoredi.Benchmarks/Benchmarks/GroupingBenchmarks.cs", "public void DefaultGroupOnly()");
+// ---------------------------------------------------------------------------
+// Packaging contracts
+// ---------------------------------------------------------------------------
+requireMatch(
+  "src/Autoredi/Autoredi.csproj",
+  /<TargetFrameworks>[^<]*netstandard2\.0[^<]*<\/TargetFrameworks>/,
+  "must keep a netstandard2.0 asset so older consumers can reference the package",
+);
+// GeneratePathProperty is empty during the outer multi-target build, so the analyzer path
+// must have a fallback or pack fails with a bogus "/lib/<tfm>" path.
+requireMatch("src/Autoredi/Autoredi.csproj", /FlowgenPackageRoot/, "must resolve Flowgen outside the inner build too");
+require_("src/Autoredi/Autoredi.csproj", "RequireStrongNameKeyForPack");
+require_("src/Autoredi/Autoredi.csproj", "AUTOREDI001");
+rejectMatch("src/Autoredi/Autoredi.csproj", /<GeneratePackageOnBuild>\s*true\s*<\/GeneratePackageOnBuild>/);
+// Documentation must stay mandatory for the shipped public API.
+reject(centralProps, "NoWarn>CS1591");
+requireMatch(centralProps, /GenerateDocumentationFile/, "must still generate XML docs for packable projects");
+require_("src/Autoredi.Generators/Autoredi.Generators.csproj", "CS1591");
+reject("src/Autoredi.Generators/Names.cs", "public static class Names");
+
+// ---------------------------------------------------------------------------
+// CI wiring
+// ---------------------------------------------------------------------------
+const workflow = read(".github/workflows/build-publish-nuget.yml");
+for (const [what, needle] of [
+  ["SDK version", "dotnet-version: '10.0.x'"],
+  ["solution restore", "dotnet restore Autoredi.slnx"],
+  ["tests", "dotnet run --project tests/Autoredi.Tests"],
+  ["modular sample", "dotnet run --project samples/Samples.Modular.App"],
+  ["stabilization verifier", "node scripts/verify-stabilization.mjs"],
+  ["package smoke test", "node scripts/verify-package-smoke.mjs"],
+  ["artifact check", "Check for committed build artifacts"],
+  ["pull request trigger", "pull_request:"],
+]) {
+  if (!workflow.includes(needle)) {
+    failures.push(`.github/workflows/build-publish-nuget.yml is missing ${what}.`);
+  }
+}
+if (/Autoredi\.Generators\.csproj/.test(workflow)) {
+  failures.push("CI still packs Autoredi.Generators.csproj, which is not packable and produces no package.");
+}
+if (!workflow.includes("'scripts/**'")) {
+  failures.push("CI does not trigger on verifier changes (scripts/** missing from the path filter).");
+}
+
+// ---------------------------------------------------------------------------
+// Consumer documentation
+// ---------------------------------------------------------------------------
+const readme = read("README.md");
+for (const contract of [
+  "Microsoft.Extensions.DependencyInjection",
+  "using MyApp.Autoredi;",
+  "AUTOREDI012",
+  "AUTOREDI001",
+  "last-registration",
+  "netstandard2.0",
+  "TryAddAutorediDescriptor",
+]) {
+  if (!readme.includes(contract)) {
+    failures.push(`README.md does not document: ${contract}`);
+  }
+}
+for (const stale of [
+  "services.AddSingleton<AppConfig>()",
+  "services.AddTransient<ILogger, ConsoleLogger>()",
+  "Use Transient (0), Scoped (1), or Singleton (2)",
+  "targets .NET 10.0",
+  "single implementation uses `TryAdd`",
+]) {
+  if (readme.includes(stale)) {
+    failures.push(`README.md still contains stale text: ${stale}`);
+  }
+}
+
+const skill = read("docs/skills/autoredi/SKILL.md");
+for (const contract of ["AUTOREDI012", "AUTOREDI001", "last-registration", "netstandard2.0", "TryAddAutorediDescriptor"]) {
+  if (!skill.includes(contract)) {
+    failures.push(`docs/skills/autoredi/SKILL.md does not document: ${contract}`);
+  }
+}
+if (skill.includes("## TryAdd contract")) {
+  failures.push("docs/skills/autoredi/SKILL.md still documents the old TryAdd contract section.");
+}
+
+require_("AGENTS.md", "AUTOREDI012");
+require_("LICENSE", "MIT License");
+
+// ---------------------------------------------------------------------------
+// Benchmarks still exercise the generated API
+// ---------------------------------------------------------------------------
+require_("benchmarks/Autoredi.Benchmarks/Benchmarks/ComprehensiveRegistrationBenchmarks.cs", "AddAutorediServicesAutorediBenchmarks");
+require_("benchmarks/Autoredi.Benchmarks/Benchmarks/GroupingBenchmarks.cs", "AddAutorediServicesAutorediBenchmarks");
+require_("benchmarks/Autoredi.Benchmarks/Benchmarks/GroupingBenchmarks.cs", "public void DefaultGroupOnly()");
+
+if (failures.length > 0) {
+  for (const failure of failures) {
+    process.stderr.write(`AUTOREDI_STABILIZATION_FAIL: ${failure}\n`);
+  }
+  process.exit(1);
+}
 
 process.stdout.write("AUTOREDI_STABILIZATION_PASS\n");

@@ -15,8 +15,26 @@ if (!versionMatch) {
 const version = versionMatch[1];
 const tempRoot = mkdtempSync(join(tmpdir(), "autoredi-package-smoke-"));
 const packageDir = join(tempRoot, "packages");
-const consumerDir = join(tempRoot, "consumer");
 const packagePath = join(packageDir, `Autoredi.${version}.nupkg`);
+const nugetConfig = join(tempRoot, "NuGet.config");
+const consumerProgram = `using Autoredi.Attributes;
+using Microsoft.Extensions.DependencyInjection;
+using Consumer.Autoredi;
+
+[Autoredi(ServiceLifetime.Singleton)]
+public sealed class AppConfig;
+
+public static class Program
+{
+    public static void Main()
+    {
+        var services = new ServiceCollection();
+        services.AddAutorediServices();
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<AppConfig>();
+    }
+}
+`;
 
 const run = (command, args, options = {}) => {
   try {
@@ -47,6 +65,7 @@ try {
 
   const packageEntries = run("unzip", ["-l", packagePath]);
   for (const requiredEntry of [
+    "lib/netstandard2.0/Autoredi.dll",
     "lib/net10.0/Autoredi.dll",
     "analyzers/dotnet/cs/Autoredi.Generators.dll",
     "analyzers/dotnet/cs/Flowgen.dll",
@@ -57,7 +76,6 @@ try {
     }
   }
 
-  const nugetConfig = join(tempRoot, "NuGet.config");
   writeFileSync(
     nugetConfig,
     `<?xml version="1.0" encoding="utf-8"?>
@@ -71,14 +89,20 @@ try {
 `,
   );
 
-  const consumerProject = join(consumerDir, "Consumer.csproj");
-  mkdirSync(consumerDir, { recursive: true });
-  writeFileSync(
-    consumerProject,
-    `<Project Sdk="Microsoft.NET.Sdk">
+  // The package is consumed from more than one target framework on purpose: net10.0 proves
+  // the current path, net8.0 proves the netstandard2.0 asset really is usable, which is the
+  // whole reason the package multi-targets.
+  const consumerFrameworks = ["net10.0", "net8.0"];
+  for (const framework of consumerFrameworks) {
+    const consumerDir = join(tempRoot, `consumer-${framework}`);
+    const consumerProject = join(consumerDir, "Consumer.csproj");
+    mkdirSync(consumerDir, { recursive: true });
+    writeFileSync(
+      consumerProject,
+      `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>${framework}</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -88,46 +112,27 @@ try {
   </ItemGroup>
 </Project>
 `,
-  );
+    );
 
-  writeFileSync(
-    join(consumerDir, "Program.cs"),
-    `using Autoredi.Attributes;
-using Microsoft.Extensions.DependencyInjection;
-using Consumer.Autoredi;
+    writeFileSync(join(consumerDir, "Program.cs"), consumerProgram);
 
-[Autoredi(ServiceLifetime.Singleton)]
-public sealed class AppConfig;
-
-public static class Program
-{
-    public static void Main()
-    {
-        var services = new ServiceCollection();
-        services.AddAutorediServices();
-        using var provider = services.BuildServiceProvider();
-        _ = provider.GetRequiredService<AppConfig>();
-    }
-}
-`,
-  );
-
-  run("dotnet", [
-    "restore",
-    consumerProject,
-    "--configfile",
-    nugetConfig,
-    "--packages",
-    join(tempRoot, "nuget-packages"),
-    "--nologo",
-  ]);
-  run("dotnet", [
-    "run",
-    "--project",
-    consumerProject,
-    "--no-restore",
-    "--nologo",
-  ], { cwd: consumerDir });
+    run("dotnet", [
+      "restore",
+      consumerProject,
+      "--configfile",
+      nugetConfig,
+      "--packages",
+      join(tempRoot, "nuget-packages"),
+      "--nologo",
+    ]);
+    run("dotnet", [
+      "run",
+      "--project",
+      consumerProject,
+      "--no-restore",
+      "--nologo",
+    ], { cwd: consumerDir });
+  }
 
   process.stdout.write("AUTOREDI_PACKAGE_SMOKE_PASS\n");
 } finally {
