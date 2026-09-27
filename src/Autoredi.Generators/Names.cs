@@ -1,6 +1,6 @@
 namespace Autoredi.Generators;
 
-public static class Names
+internal static class Names
 {
     internal const string AttributesNamespace = "Attributes";
     internal const string AutorediAttName = "Autoredi";

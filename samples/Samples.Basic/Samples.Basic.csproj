@@ -8,14 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
-        <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
-        <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
-    </ItemGroup>
-
-    <ItemGroup>
         <ProjectReference Include="..\..\src\Autoredi\Autoredi.csproj" />
         <ProjectReference Include="..\..\src\Autoredi.Generators\Autoredi.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
-
 </Project>

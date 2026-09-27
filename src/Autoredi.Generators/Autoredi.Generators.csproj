@@ -9,19 +9,21 @@
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <AnalyzerReleaseTracking>Enabled</AnalyzerReleaseTracking>
-        <NoWarn>$(NoWarn);CS8002</NoWarn>
+        <!-- Shipped as an analyzer, never referenced as a library: no public API to document
+             and no release-tracking file to maintain. -->
+        <NoWarn>$(NoWarn);CS1591;CS8002;RS2008</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Flowgen" Version="0.11.0" GeneratePathProperty="true" PrivateAssets="all" />
+        <PackageReference Include="Flowgen" Version="$(FlowgenVersion)" GeneratePathProperty="true" PrivateAssets="all" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
+        <!-- The analyzer is self-contained: it must not pull MEDI in, only Roslyn and Flowgen. -->
         <PackageReference Remove="Microsoft.Extensions.DependencyInjection" />
         <PackageReference Remove="Microsoft.Extensions.DependencyInjection.Abstractions" />
-        <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
     </ItemGroup>
 
     <PropertyGroup>

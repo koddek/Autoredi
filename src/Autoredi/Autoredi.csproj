@@ -1,33 +1,50 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <!-- The package ships one attribute plus a Roslyn analyzer, so it has no reason to lock
+             consumers to a single modern TFM. netstandard2.0 lets net8.0/net9.0 and older class
+             libraries reference Autoredi; the generator itself stays netstandard2.0. -->
+        <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
         <PackageId>Autoredi</PackageId>
         <Version>0.5.3</Version>
         <IsPackable>true</IsPackable>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <!-- No GeneratePackageOnBuild: pack is an explicit, verified step (CI and
+             scripts/verify-package-smoke.mjs both call dotnet pack). Building the solution must
+             not require the strong-name key, and must not silently produce a package. -->
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Flowgen" Version="$(FlowgenVersion)" GeneratePathProperty="true" PrivateAssets="all" />
+    </ItemGroup>
+
+    <!-- GeneratePathProperty only emits PkgFlowgen inside TFM-conditioned groups, so it is empty
+         during the outer multi-target build that pack runs in. Fall back to the global packages
+         folder, otherwise the analyzer path collapses to "\lib\netstandard2.0\Flowgen.dll". -->
+    <PropertyGroup>
+        <FlowgenPackageRoot Condition="'$(PkgFlowgen)' != ''">$(PkgFlowgen)</FlowgenPackageRoot>
+        <FlowgenPackageRoot Condition="'$(FlowgenPackageRoot)' == ''">$(NuGetPackageRoot)flowgen\$(FlowgenVersion)</FlowgenPackageRoot>
     </PropertyGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Autoredi.Generators\Autoredi.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+        <!-- Analyzer payload is TFM-independent, so it ships once at the package root of analyzers. -->
         <None Include="$(MSBuildProjectDirectory)\..\Autoredi.Generators\bin\$(Configuration)\netstandard2.0\Autoredi.Generators.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
-        <None Include="$(PkgFlowgen)\lib\netstandard2.0\Flowgen.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
-    </ItemGroup>
-
-    <ItemGroup>
+        <None Include="$(FlowgenPackageRoot)\lib\netstandard2.0\Flowgen.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
         <!-- Agent skill travels with the package so coding agents can discover usage guidance
              at ~/.nuget/packages/autoredi/<version>/skills/Autoredi/SKILL.md -->
         <None Include="..\..\docs\skills\autoredi\SKILL.md" Pack="true" PackagePath="skills/Autoredi" Visible="false" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Flowgen" Version="0.11.0" GeneratePathProperty="true" PrivateAssets="all" />
+      <!-- The library only needs MEDI abstractions; the implementation package must not leak
+           into Autoredi's own dependency graph. -->
+      <PackageReference Remove="Microsoft.Extensions.DependencyInjection" />
     </ItemGroup>
 
-    <ItemGroup>
-      <PackageReference Remove="Microsoft.Extensions.DependencyInjection" />
-      <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
-      <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.401" />
-    </ItemGroup>
+    <!-- Directory.Build.props only enables signing when the key file is present, so a
+         contributor without the secret can still build. Publishing must never be unsigned. -->
+    <Target Name="RequireStrongNameKeyForPack" BeforeTargets="GenerateNuspec" Condition="'$(SignAssembly)' != 'true'">
+        <Error Code="AUTOREDI001" Text="Autoredi.snk was not found next to Directory.Build.props, so this package would ship unsigned. Restore the key or set SignAssembly=false deliberately before packing." />
+    </Target>
 
 </Project>

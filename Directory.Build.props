@@ -22,20 +22,27 @@
         <LangVersion>latest</LangVersion>
         <ImplicitUsings>true</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <NoWarn>CS1591;RS2008</NoWarn>
 
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
     </PropertyGroup>
 
+    <!-- Only the shipped library needs an XML doc file. Leaving CS1591 active there keeps
+         public API documentation mandatory; projects no consumer ever references (analyzer,
+         samples, tests, benchmarks) opt out explicitly instead of silencing it repo-wide. -->
+    <PropertyGroup Condition="'$(IsPackable)' == 'true'">
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    </PropertyGroup>
+
     <PropertyGroup Condition="'$(IsRoslynComponent)' == 'true'">
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     </PropertyGroup>
 
-    <!-- Sign all non‑test assemblies -->
-    <PropertyGroup Condition="'$(IsTestProject)' != 'true'">
+    <!-- Strong-name every assembly we ship. The key is a local secret, so a build without it
+         still works instead of failing with CS7027; Autoredi.csproj refuses to pack unsigned,
+         so a published package can never silently lose its signature. -->
+    <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory)Autoredi.snk')">
         <SignAssembly>true</SignAssembly>
         <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)Autoredi.snk</AssemblyOriginatorKeyFile>
     </PropertyGroup>
@@ -50,5 +57,12 @@
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12"/>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12"/>
     </ItemGroup>
+
+    <!-- Single source of truth for the Flowgen version. Autoredi and Autoredi.Generators must
+         agree, because the generator loads Flowgen.dll from beside itself at analyzer time.
+         Flowgen is not on nuget.org; it is restored from the GitHub Packages source. -->
+    <PropertyGroup>
+        <FlowgenVersion>0.12.0</FlowgenVersion>
+    </PropertyGroup>
 
 </Project>
