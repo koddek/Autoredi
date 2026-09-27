@@ -255,6 +255,21 @@ if (snkSteps !== 2) {
       `The verify job packs via the package smoke test, which fails with AUTOREDI001 when unsigned.`,
   );
 }
+// Every `dotnet nuget add source --password ...` must pass --store-password-in-clear-text.
+// Without it the .NET SDK tries to encrypt the password, which is unsupported off Windows,
+// and the step dies with "Password encryption is not supported on .NET Core for this
+// platform". Checked per command rather than by counting, so one correct invocation cannot
+// mask another that is missing the flag.
+const nugetAddSourceBlocks = [...workflowBody.matchAll(/dotnet nuget add source(?:[^\n]*\\\n)*[^\n]*/g)];
+for (const [match] of nugetAddSourceBlocks) {
+  if (!match.includes("--store-password-in-clear-text")) {
+    failures.push(
+      ".github/workflows/build-publish-nuget.yml: a 'dotnet nuget add source' command is missing " +
+        "--store-password-in-clear-text, which fails on Linux and macOS runners.",
+    );
+  }
+}
+
 if (/Autoredi\.Generators\.csproj/.test(workflowBody)) {
   failures.push("CI still packs Autoredi.Generators.csproj, which is not packable and produces no package.");
 }
