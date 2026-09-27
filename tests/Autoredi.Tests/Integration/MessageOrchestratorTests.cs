@@ -1,5 +1,7 @@
 namespace Autoredi.Tests.Integration;
 
+// The orchestrator needs a keyed-resolver factory on top of the generated registrations, so
+// this suite builds its own container instead of deriving from AutorediContainerTest.
 public class MessageOrchestratorTests : IDisposable
 {
     private readonly ServiceProvider _serviceProvider;

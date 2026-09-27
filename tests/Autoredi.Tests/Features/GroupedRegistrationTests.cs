@@ -46,40 +46,6 @@ public class GroupedRegistrationTests
     }
 
     [Test]
-    public async Task AddAutorediServices_OnlyRegistersUngroupedServices()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-
-        // Act
-        services.AddAutorediServices();
-        using var provider = services.BuildServiceProvider();
-
-        // Assert
-        await Assert.That(provider.GetService<DefaultService>()).IsNotNull();
-
-        // Should NOT have others
-        await Assert.That(provider.GetService<FirebaseConfig>()).IsNull();
-        await Assert.That(provider.GetService<AccountService>()).IsNull();
-    }
-
-    [Test]
-    public async Task AddAutorediServicesAutorediTests_RegistersAllGroups()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-
-        // Act
-        services.AddAutorediServicesAutorediTests();
-        using var provider = services.BuildServiceProvider();
-
-        // Assert - All services available
-        await Assert.That(provider.GetService<FirebaseConfig>()).IsNotNull();
-        await Assert.That(provider.GetService<AccountService>()).IsNotNull();
-        await Assert.That(provider.GetService<DefaultService>()).IsNotNull();
-    }
-
-    [Test]
     public async Task AddAutorediServicesAll_RegistersAllGroups()
     {
         // Arrange

@@ -1,22 +1,13 @@
 namespace Autoredi.Tests.Core;
 
-public class ServiceResolutionTests : IDisposable
+public class ServiceResolutionTests : AutorediContainerTest
 {
-    private readonly ServiceProvider _serviceProvider;
-
-    public ServiceResolutionTests()
-    {
-        var services = new ServiceCollection();
-        services.AddAutorediServices();
-        _serviceProvider = services.BuildServiceProvider();
-    }
-
     [Test]
     public async Task ResolveInterface_ReturnsImplementation_WhenMapped()
     {
         // Arrange
         // Act
-        var service = _serviceProvider.GetRequiredService<ITestLogService>();
+        var service = Provider.GetRequiredService<ITestLogService>();
 
         // Assert
         await Assert.That(service).IsNotNull();
@@ -28,7 +19,7 @@ public class ServiceResolutionTests : IDisposable
     {
         // Arrange
         // Act
-        var settings = _serviceProvider.GetRequiredService<TestSettings>();
+        var settings = Provider.GetRequiredService<TestSettings>();
 
         // Assert
         await Assert.That(settings).IsNotNull();
@@ -58,8 +49,8 @@ public class ServiceResolutionTests : IDisposable
     {
         // Arrange
         // Act
-        var logService = _serviceProvider.GetRequiredService<ITestLogService>();
-        var settings = _serviceProvider.GetRequiredService<TestSettings>();
+        var logService = Provider.GetRequiredService<ITestLogService>();
+        var settings = Provider.GetRequiredService<TestSettings>();
 
         // Assert
         await Assert.That(logService).IsOfType(typeof(TestLogService));
@@ -95,7 +86,7 @@ public class ServiceResolutionTests : IDisposable
     {
         // Arrange
         // Act
-        var service = _serviceProvider.GetService<ITestExternalService>();
+        var service = Provider.GetService<ITestExternalService>();
 
         // Assert
         await Assert.That(service).IsNull();
@@ -106,7 +97,7 @@ public class ServiceResolutionTests : IDisposable
     {
         // Arrange
         // Act & Assert
-        await Assert.That(() => _serviceProvider.GetRequiredService<ITestExternalService>())
+        await Assert.That(() => Provider.GetRequiredService<ITestExternalService>())
             .ThrowsException();
     }
 
@@ -118,7 +109,7 @@ public class ServiceResolutionTests : IDisposable
         TestSettings outerSettings;
         ITestLogService outerLogService;
 
-        using (var outerScope = _serviceProvider.CreateScope())
+        using (var outerScope = Provider.CreateScope())
         {
             outerSettings = outerScope.ServiceProvider.GetRequiredService<TestSettings>();
             outerLogService = outerScope.ServiceProvider.GetRequiredService<ITestLogService>();
@@ -136,6 +127,4 @@ public class ServiceResolutionTests : IDisposable
             }
         }
     }
-
-    public void Dispose() => _serviceProvider.Dispose();
 }

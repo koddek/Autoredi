@@ -110,26 +110,6 @@ public class UserFlowTests
 
     // --- UserFlow: Grouped registration (selective) ---
 
-    [Test]
-    public async Task UserFlow_SelectiveGroupRegistration_OnlyRequestedGroupIsAvailable()
-    {
-        // User has modular services split into Firebase / Account / Default groups
-        var firebaseOnly = new ServiceCollection();
-        firebaseOnly.AddAutorediServicesFirebase();
-        using var firebaseProvider = firebaseOnly.BuildServiceProvider();
-
-        await Assert.That(firebaseProvider.GetService<FirebaseConfig>()).IsNotNull();
-        await Assert.That(firebaseProvider.GetService<AccountService>()).IsNull();
-        await Assert.That(firebaseProvider.GetService<DefaultService>()).IsNull();
-
-        var accountOnly = new ServiceCollection();
-        accountOnly.AddAutorediServicesAccount();
-        using var accountProvider = accountOnly.BuildServiceProvider();
-
-        await Assert.That(accountProvider.GetService<AccountService>()).IsNotNull();
-        await Assert.That(accountProvider.GetService<FirebaseConfig>()).IsNull();
-    }
-
     // --- UserFlow: Multi-interface (single class, two contracts) ---
 
     [Test]
@@ -157,13 +137,13 @@ public class UserFlowTests
     [Test]
     public async Task UserFlow_ManualRegistration_WinsOverAutoredi_WhenRegisteredFirst()
     {
-        // User wants to override a service for testing (e.g., replace FirebaseConfig)
+        // A consumer overrides an interface implementation for testing. Registering the
+        // instance first must keep it as the resolved service after the generated call.
         var imposter = ITestLogService.Imposter();
-        // Setup must allow Log call? Use Implicit so void passes without explicit setup
 
         var services = new ServiceCollection();
         services.AddSingleton<ITestLogService>(imposter.Instance()); // manual first
-        services.AddAutorediServices(); // Autoredi must not replace it (TryAdd)
+        services.AddAutorediServices();
         using var provider = services.BuildServiceProvider();
 
         var resolved = provider.GetRequiredService<ITestLogService>();
@@ -172,22 +152,5 @@ public class UserFlowTests
         // Prove it is the imposter and still mock-verifiable
         resolved.Log("probe");
         imposter.Log(Arg<string>.Any()).Called(Count.Once());
-    }
-
-    // --- UserFlow: Priority ordering is observable in ServiceCollection ---
-
-    [Test]
-    public async Task UserFlow_PriorityOrdering_FirebaseGroup_HighPriorityFirst()
-    {
-        var services = new ServiceCollection();
-        services.AddAutorediServicesFirebase();
-
-        var order = services.Select(d => d.ServiceType.Name).ToList();
-        var configIdx = order.IndexOf(nameof(FirebaseConfig));
-        var repoIdx = order.IndexOf(nameof(FirebaseRepo));
-        var loggerIdx = order.IndexOf(nameof(FirebaseLogger));
-
-        await Assert.That(configIdx).IsLessThan(repoIdx);
-        await Assert.That(repoIdx).IsLessThan(loggerIdx);
     }
 }

@@ -1,16 +1,7 @@
 namespace Autoredi.Tests.Core;
 
-public class KeyedServicesTests : IDisposable
+public class KeyedServicesTests : AutorediContainerTest
 {
-    private readonly ServiceProvider _serviceProvider;
-
-    public KeyedServicesTests()
-    {
-        var services = new ServiceCollection();
-        services.AddAutorediServices();
-        _serviceProvider = services.BuildServiceProvider();
-    }
-
     [Test]
     [Arguments(ServiceKeys.Email)]
     [Arguments(ServiceKeys.SMS)]
@@ -27,7 +18,7 @@ public class KeyedServicesTests : IDisposable
         };
 
         // Act
-        var sender = _serviceProvider.GetKeyedService<ITestMessageSender>(key);
+        var sender = Provider.GetKeyedService<ITestMessageSender>(key);
 
         // Assert
         await Assert.That(sender).IsNotNull();
@@ -39,7 +30,7 @@ public class KeyedServicesTests : IDisposable
     {
         // Arrange
         // Act
-        var sender = _serviceProvider.GetKeyedService<ITestMessageSender>("invalid-key");
+        var sender = Provider.GetKeyedService<ITestMessageSender>("invalid-key");
 
         // Assert
         await Assert.That(sender).IsNull();
@@ -50,7 +41,7 @@ public class KeyedServicesTests : IDisposable
     {
         // Arrange
         // Act
-        var sender = _serviceProvider.GetKeyedService<ITestMessageSender>("");
+        var sender = Provider.GetKeyedService<ITestMessageSender>("");
 
         // Assert
         await Assert.That(sender).IsNull();
@@ -82,9 +73,9 @@ public class KeyedServicesTests : IDisposable
     {
         // Arrange
         // Act
-        var emailSender = _serviceProvider.GetKeyedService<ITestMessageSender>(ServiceKeys.Email);
-        var smsSender = _serviceProvider.GetKeyedService<ITestMessageSender>(ServiceKeys.SMS);
-        var pushSender = _serviceProvider.GetKeyedService<ITestMessageSender>(ServiceKeys.Push);
+        var emailSender = Provider.GetKeyedService<ITestMessageSender>(ServiceKeys.Email);
+        var smsSender = Provider.GetKeyedService<ITestMessageSender>(ServiceKeys.SMS);
+        var pushSender = Provider.GetKeyedService<ITestMessageSender>(ServiceKeys.Push);
 
         // Assert
         await Assert.That(emailSender).IsOfType(typeof(TestEmailSender));
@@ -97,12 +88,10 @@ public class KeyedServicesTests : IDisposable
     {
         // Arrange
         // Act
-        var sender1 = _serviceProvider.GetKeyedService<ITestMessageSender>(ServiceKeys.Email);
-        var sender2 = _serviceProvider.GetKeyedService<ITestMessageSender>(ServiceKeys.Email);
+        var sender1 = Provider.GetKeyedService<ITestMessageSender>(ServiceKeys.Email);
+        var sender2 = Provider.GetKeyedService<ITestMessageSender>(ServiceKeys.Email);
 
         // Assert
         await Assert.That(ReferenceEquals(sender1, sender2)).IsTrue();
     }
-
-    public void Dispose() => _serviceProvider.Dispose();
 }

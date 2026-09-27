@@ -1,22 +1,13 @@
 namespace Autoredi.Tests.Integration;
 
-public class MessageControllerTests : IDisposable
+public class MessageControllerTests : AutorediContainerTest
 {
-    private readonly ServiceProvider _serviceProvider;
-
-    public MessageControllerTests()
-    {
-        var services = new ServiceCollection();
-        services.AddAutorediServices();
-        _serviceProvider = services.BuildServiceProvider();
-    }
-
     [Test]
     public async Task ResolveMessageController_ReturnsInstance_WhenRegistered()
     {
         // Arrange
         // Act
-        var controller = _serviceProvider.GetRequiredService<TestServices.TestMessageController>();
+        var controller = Provider.GetRequiredService<TestServices.TestMessageController>();
 
         // Assert
         await Assert.That(controller).IsNotNull();
@@ -27,7 +18,7 @@ public class MessageControllerTests : IDisposable
     {
         // Arrange
         // Act
-        var controller = _serviceProvider.GetRequiredService<TestServices.TestMessageController>();
+        var controller = Provider.GetRequiredService<TestServices.TestMessageController>();
         var sender = controller.GetSender();
 
         // Assert
@@ -72,6 +63,4 @@ public class MessageControllerTests : IDisposable
         // But they should receive the same SMS sender instance (singleton)
         await Assert.That(ReferenceEquals(controller1.GetSender(), controller2.GetSender())).IsTrue();
     }
-
-    public void Dispose() => _serviceProvider.Dispose();
 }
