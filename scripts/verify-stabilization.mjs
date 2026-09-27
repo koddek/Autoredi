@@ -206,8 +206,18 @@ reject("src/Autoredi.Generators/Names.cs", "public static class Names");
 // CI wiring
 // ---------------------------------------------------------------------------
 const workflow = read(".github/workflows/build-publish-nuget.yml");
+// Comment lines are stripped before matching. Otherwise a check can be satisfied by prose
+// explaining the setting rather than the setting itself, which is how "8.0.x" passed once
+// the real entry was removed.
+const workflowBody = workflow
+  .split("\n")
+  .filter((line) => !line.trimStart().startsWith("#"))
+  .join("\n");
 for (const [what, needle] of [
-  ["SDK version", "dotnet-version: '10.0.x'"],
+  // 8.0.x is not optional: the package smoke test runs a real net8.0 consumer, which is
+  // the only proof that the netstandard2.0 asset actually works.
+  ["SDK version 10.0.x", "10.0.x"],
+  ["SDK version 8.0.x for the net8.0 smoke consumer", "8.0.x"],
   ["solution restore", "dotnet restore Autoredi.slnx"],
   ["tests", "dotnet run --project tests/Autoredi.Tests"],
   ["modular sample", "dotnet run --project samples/Samples.Modular.App"],
@@ -228,15 +238,27 @@ for (const [what, needle] of [
   ["separate verify job", "\n  verify:"],
   ["separate publish job", "\n  publish:"],
   ["publish gated on verify", "needs: verify"],
+  // The verify job runs `dotnet pack` via the package smoke test, and pack refuses to
+  // produce an unsigned package, so verify needs the strong-name key too.
+  ["strong-name key in both jobs", "Create SNK file from secret"],
 ]) {
-  if (!workflow.includes(needle)) {
+  if (!workflowBody.includes(needle)) {
     failures.push(`.github/workflows/build-publish-nuget.yml is missing ${what}.`);
   }
 }
-if (/Autoredi\.Generators\.csproj/.test(workflow)) {
+
+// Both jobs must materialise the key; verify because it packs, publish because it signs.
+const snkSteps = (workflow.match(/- name: Create SNK file from secret/g) ?? []).length;
+if (snkSteps !== 2) {
+  failures.push(
+    `.github/workflows/build-publish-nuget.yml must create Autoredi.snk in both jobs (found ${snkSteps}). ` +
+      `The verify job packs via the package smoke test, which fails with AUTOREDI001 when unsigned.`,
+  );
+}
+if (/Autoredi\.Generators\.csproj/.test(workflowBody)) {
   failures.push("CI still packs Autoredi.Generators.csproj, which is not packable and produces no package.");
 }
-if (!workflow.includes("'scripts/**'")) {
+if (!workflowBody.includes("'scripts/**'")) {
   failures.push("CI does not trigger on verifier changes (scripts/** missing from the path filter).");
 }
 

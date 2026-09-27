@@ -68,7 +68,26 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          # 8.0.x is required because the package smoke test restores and runs a real net8.0
+          # consumer, which proves the netstandard2.0 asset is usable. Do not assume the
+          # runner image happens to ship that runtime.
+          dotnet-version: |
+            10.0.x
+            8.0.x
+
+      # The verify job needs the key as well as the token: the package smoke test runs
+      # `dotnet pack`, and pack refuses to produce an unsigned package (AUTOREDI001). Giving
+      # verify the key costs nothing in secret exposure, because restore already required
+      # GH_PACKAGES_TOKEN, so this job was never reachable without repository secrets.
+      - name: Create SNK file from secret
+        env:
+          SNK_FILE_BASE64: ${{ secrets.SNK_FILE_BASE64 }}
+        run: |
+          if [ -z "$SNK_FILE_BASE64" ]; then
+            echo "::error::SNK_FILE_BASE64 is empty. Store the base64 Autoredi.snk as a repository secret."
+            exit 1
+          fi
+          echo "$SNK_FILE_BASE64" | base64 --decode > ${{ github.workspace }}/Autoredi.snk
 
       # Fails here, with instructions, rather than letting restore emit NU1301/401 lines that
       # read like a missing package instead of a missing credential.
