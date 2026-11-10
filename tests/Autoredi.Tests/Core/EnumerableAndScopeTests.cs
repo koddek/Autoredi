@@ -13,7 +13,7 @@ public class EnumerableAndScopeTests
         // Act
         var generators = provider.GetServices<IReportGenerator>().ToList();
 
-        // Assert - TryAddEnumerable allows multiple implementations of same interface
+        // Assert - the descriptor helper keeps multiple implementations of the same interface
         await Assert.That(generators.Count).IsGreaterThanOrEqualTo(2);
         await Assert.That(generators.OfType<PdfReportGenerator>().Any()).IsTrue();
         await Assert.That(generators.OfType<CsvReportGenerator>().Any()).IsTrue();

@@ -115,7 +115,7 @@ public class AdvancedRegistrationTests
     }
 
     [Test]
-    public async Task TryAddEnumerable_ManualKeyedSingleton_NotOverridden()
+    public async Task DescriptorHelper_ManualKeyedSingleton_NotOverridden()
     {
         var imposter = ITestMessageSender.Imposter();
         var services = new ServiceCollection();

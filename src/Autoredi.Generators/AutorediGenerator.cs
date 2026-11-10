@@ -8,17 +8,27 @@ public sealed class AutorediGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        context.RegisterSourceOutput(
-            context.CompilationProvider.Select((compilation, ct) => AutorediAllServicesSource.TryCreate(compilation, ct)),
-            (spc, source) =>
-            {
-                if (source is null || source.Length == 0)
-                {
-                    return;
-                }
+        // The per-assembly extension methods carry the registrations. This pipeline derives
+        // everything the cross-assembly aggregator needs, cheaply and incrementally:
+        // - a syntax-level scan for Autoredi attribute usage in the current assembly, which
+        //   picks up both user code and generated code produced by other analyzers;
+        // - a compilation-level probe of the referenced assembly symbols, which for typical
+        //   SDK builds already sees the full transitive closure of package and project
+        //   references (the marker probe itself is O(1) per assembly).
+        var selfContribution = context.SyntaxProvider.CreateSyntaxProvider(
+                static (node, _) => node is AttributeSyntax attribute && IsAutorediAttributeName(attribute.Name),
+                static (_, _) => true)
+            .Collect()
+            .Select(static (hits, _) => !hits.IsDefaultOrEmpty)
+            .WithTrackingName("Autoredi.SelfAttributeSyntax");
 
-                spc.AddSource("AutorediServices.All.g.cs", source);
-            });
+        var referenceProbe = context.CompilationProvider
+            .Select(static (compilation, ct) => AutorediAllServicesSource.Probe(compilation, ct))
+            .WithTrackingName("Autoredi.ReferencedAssemblyProbe");
+
+        context.RegisterSourceOutput(
+            selfContribution.Combine(referenceProbe),
+            (spc, pair) => AutorediAllServicesSource.Emit(spc, pair.Left, pair.Right));
 
         Flow.Create()
             .ForAttributeWithMetadataName(Names.AutorediAttFullName)
@@ -73,137 +83,164 @@ public sealed class AutorediGenerator : IIncrementalGenerator
             : Diagnostic.Create(descriptor, location, info.Arg0, info.Arg1);
     }
 
+    private static bool IsAutorediAttributeName(NameSyntax name) =>
+        (name switch
+        {
+            IdentifierNameSyntax simple => simple.Identifier.Text,
+            QualifiedNameSyntax qualified => LastNameSegment(qualified.Right),
+            AliasQualifiedNameSyntax alias => LastNameSegment(alias.Name),
+            _ => string.Empty,
+        }) == Names.AutorediAttName;
+
+    private static string LastNameSegment(NameSyntax name) => name switch
+    {
+        IdentifierNameSyntax simple => simple.Identifier.Text,
+        QualifiedNameSyntax qualified => LastNameSegment(qualified.Right),
+        AliasQualifiedNameSyntax alias => LastNameSegment(alias.Name),
+        _ => string.Empty,
+    };
+
     private static DiagnosticDescriptor ResolveDescriptor(string id) => id switch
     {
         "AUTOREDI007" => Diagnostics.InterfaceNotImplemented,
         "AUTOREDI010" => Diagnostics.InvalidLifetime,
         "AUTOREDI011" => Diagnostics.InvalidInterfaceType,
         "AUTOREDI012" => Diagnostics.InvalidImplementationType,
+        "AUTOREDI024" => Diagnostics.ServiceTypeNotAccessible,
+        "AUTOREDI026" => Diagnostics.OpenGenericServiceTypeNotSupported,
         _ => throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown Autoredi diagnostic id.")
     };
+}
+
+/// <summary>
+/// Plain-data probe of the compilation used to decide what the cross-assembly aggregator
+/// emits. Holds no symbols, so it can flow through the incremental cache safely.
+/// </summary>
+internal readonly struct AggregatorProbe
+{
+    public AggregatorProbe(
+        bool isExecutable,
+        string assemblyName,
+        ImmutableArray<string> orderedReferencedContributors,
+        ImmutableArray<(string AssemblyName, string Suffix)> incompatibleAssemblies)
+    {
+        IsExecutable = isExecutable;
+        AssemblyName = assemblyName;
+        OrderedReferencedContributors = orderedReferencedContributors;
+        IncompatibleAssemblies = incompatibleAssemblies;
+    }
+
+    public bool IsExecutable { get; }
+
+    public string AssemblyName { get; }
+
+    /// <summary>Referenced contributing assemblies, ordinal by name. The calling assembly is appended last.</summary>
+    public ImmutableArray<string> OrderedReferencedContributors { get; }
+
+    /// <summary>Assemblies with a marker type but no compatible registration method; skipped with AUTOREDI025.</summary>
+    public ImmutableArray<(string AssemblyName, string Suffix)> IncompatibleAssemblies { get; }
 }
 
 internal static class AutorediAllServicesSource
 {
     private const string AggregatorMarkerSuffix = ".Autoredi.AutorediServiceCollectionExtensions";
 
-    public static string? TryCreate(Compilation compilation, CancellationToken ct)
+    public static AggregatorProbe Probe(Compilation compilation, CancellationToken ct)
     {
-        ct.ThrowIfCancellationRequested();
-        var attributeSymbol = compilation.GetTypeByMetadataName(Names.AutorediAttFullName);
-        if (attributeSymbol is null)
-        {
-            return null;
-        }
-
-        if (compilation.Options.OutputKind == OutputKind.DynamicallyLinkedLibrary ||
-            compilation.Options.OutputKind == OutputKind.NetModule)
-        {
-            return null;
-        }
-
-        var assemblyNames = GetAssembliesWithAutoredi(compilation, attributeSymbol, ct);
-        if (assemblyNames.Count == 0)
-        {
-            return null;
-        }
-
         var assemblyName = compilation.AssemblyName ?? compilation.Assembly.Name;
-        var targetNamespace = AutorediNaming.ToNamespace(assemblyName) + ".Autoredi";
-        return AutorediAllServicesBuilder.Generate(targetNamespace, assemblyNames);
-    }
+        var isExecutable = compilation.Options.OutputKind is not (OutputKind.DynamicallyLinkedLibrary or OutputKind.NetModule);
 
-    /// <summary>
-    /// Collects assemblies that contribute Autoredi registrations:
-    /// - the current assembly via a bounded walk of its own types (its generated marker type
-    ///   is not yet visible during the first generation run),
-    /// - referenced assemblies via an O(1) probe of their generated extension class,
-    ///   which exists exactly when their generator run produced registrations.
-    /// </summary>
-    private static List<string> GetAssembliesWithAutoredi(
-        Compilation compilation,
-        INamedTypeSymbol attributeSymbol,
-        CancellationToken ct)
-    {
-        var assemblies = new List<string>();
-        var currentAssemblyName = compilation.Assembly.Name;
-
-        if (NamespaceHasAutoredi(compilation.Assembly.GlobalNamespace, attributeSymbol, ct))
-        {
-            assemblies.Add(currentAssemblyName);
-        }
+        var contributors = new List<string>();
+        var incompatible = new List<(string AssemblyName, string Suffix)>();
 
         foreach (var referenced in compilation.SourceModule.ReferencedAssemblySymbols)
         {
             ct.ThrowIfCancellationRequested();
-            if (referenced.GetTypeByMetadataName(AutorediNaming.ToNamespace(referenced.Name) + AggregatorMarkerSuffix) is not null)
-            {
-                assemblies.Add(referenced.Name);
-            }
+            ProbeReferencedAssembly(referenced, contributors, incompatible, ct);
         }
 
-        if (assemblies.Count == 0)
-        {
-            return assemblies;
-        }
-
-        var ordered = new List<string>();
-        if (assemblies.Contains(currentAssemblyName))
-        {
-            ordered.Add(currentAssemblyName);
-        }
-
-        ordered.AddRange(assemblies
-            .Where(name => name != currentAssemblyName)
+        // Metadata does not record dependency direction (unused references are elided),
+        // so inter-library order cannot be derived from the module graph. Ordinal is the
+        // documented, deterministic order; the calling assembly is appended last, which
+        // is the part that matters for single-service resolution.
+        var ordered = contributors
             .Distinct(StringComparer.Ordinal)
-            .OrderBy(name => name, StringComparer.Ordinal));
+            .OrderBy(static name => name, StringComparer.Ordinal)
+            .ToImmutableArray();
 
-        return ordered;
+        return new AggregatorProbe(isExecutable, assemblyName, ordered, incompatible.ToImmutableArray());
     }
 
-    private static bool NamespaceHasAutoredi(
-        INamespaceSymbol symbol,
-        INamedTypeSymbol attributeSymbol,
-        CancellationToken ct)
+    public static void Emit(SourceProductionContext spc, bool selfContributes, AggregatorProbe probe)
     {
-        foreach (var type in symbol.GetTypeMembers())
+        foreach (var (name, suffix) in probe.IncompatibleAssemblies)
         {
-            ct.ThrowIfCancellationRequested();
-            if (TypeHasAutoredi(type, attributeSymbol, ct))
-            {
-                return true;
-            }
+            spc.ReportDiagnostic(Diagnostic.Create(Diagnostics.ReferencedAssemblyNotCompatible, Location.None, name, suffix));
         }
 
-        foreach (var ns in symbol.GetNamespaceMembers())
+        if (!probe.IsExecutable)
         {
-            ct.ThrowIfCancellationRequested();
-            if (NamespaceHasAutoredi(ns, attributeSymbol, ct))
-            {
-                return true;
-            }
+            return;
         }
 
-        return false;
+        var assemblyNames = new List<string>(probe.OrderedReferencedContributors);
+        if (selfContributes)
+        {
+            // The caller is registered last so its registrations win single-service resolution.
+            assemblyNames.Add(probe.AssemblyName);
+        }
+
+        if (assemblyNames.Count == 0)
+        {
+            return;
+        }
+
+        var targetNamespace = AutorediNaming.ToNamespace(probe.AssemblyName) + ".Autoredi";
+        spc.AddSource("AutorediServices.All.g.cs", AutorediAllServicesBuilder.Generate(targetNamespace, assemblyNames));
     }
 
-    private static bool TypeHasAutoredi(
-        INamedTypeSymbol symbol,
-        INamedTypeSymbol attributeSymbol,
+    /// <summary>
+    /// Probes a referenced assembly for Autoredi generated code. For typical .NET SDK builds
+    /// the compilation already carries the full transitive closure, so assemblies referenced
+    /// only by other referenced assemblies are found here too. The marker type only exists
+    /// when that assembly's generator run produced registrations, so the probe is O(1) per
+    /// assembly. The registration method is verified, not just the marker type, so an
+    /// unrelated type with a colliding name cannot hijack the aggregator.
+    /// </summary>
+    private static void ProbeReferencedAssembly(
+        IAssemblySymbol referenced,
+        List<string> contributors,
+        List<(string AssemblyName, string Suffix)> incompatible,
         CancellationToken ct)
     {
-        foreach (var attribute in symbol.GetAttributes())
+        var name = referenced.Name;
+        var marker = referenced.GetTypeByMetadataName(AutorediNaming.ToNamespace(name) + AggregatorMarkerSuffix);
+        if (marker is null)
         {
-            if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeSymbol))
-            {
-                return true;
-            }
+            return;
         }
 
-        foreach (var nested in symbol.GetTypeMembers())
+        var suffix = AutorediNaming.ToAssemblyMethodSuffix(name);
+        if (HasRegistrationMethod(marker, "AddAutorediServices" + suffix))
         {
-            ct.ThrowIfCancellationRequested();
-            if (TypeHasAutoredi(nested, attributeSymbol, ct))
+            contributors.Add(name);
+            return;
+        }
+
+        incompatible.Add((name, suffix));
+    }
+
+    private static bool HasRegistrationMethod(INamedTypeSymbol marker, string methodName)
+    {
+        foreach (var member in marker.GetMembers(methodName))
+        {
+            if (member is IMethodSymbol method
+                && method.IsStatic
+                && method.DeclaredAccessibility == Accessibility.Public
+                && method.Parameters.Length == 1
+                && method.Parameters[0].Type.MetadataName == "IServiceCollection"
+                && method.Parameters[0].Type.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+                   "global::Microsoft.Extensions.DependencyInjection")
             {
                 return true;
             }

@@ -17,14 +17,14 @@ internal static class ServiceRegistrationExtractor
         }
 
         var diagnostics = new List<DiagnosticInfo>();
-        ValidateImplementationType(symbol, attribute, diagnostics);
+        ValidateImplementationType(symbol, attribute, diagnostics, ct);
 
-        var lifetime = ExtractLifetime(attribute, symbol, diagnostics);
+        var lifetime = ExtractLifetime(attribute, symbol, diagnostics, ct);
         var serviceKey = ExtractStringArgument(attribute, 2, "ServiceKey");
         var group = ExtractStringArgument(attribute, 3, "Group");
         var priority = ExtractPriority(attribute);
 
-        var interfaceNames = ExtractInterfaceTypes(attribute, symbol, diagnostics)
+        var interfaceNames = ExtractInterfaceTypes(attribute, symbol, diagnostics, ct)
             .Select(t => t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
             .ToImmutableArray();
 
@@ -40,7 +40,7 @@ internal static class ServiceRegistrationExtractor
         );
     }
 
-    private static ServiceLifetime ExtractLifetime(AttributeData attribute, INamedTypeSymbol symbol, List<DiagnosticInfo> diagnostics)
+    private static ServiceLifetime ExtractLifetime(AttributeData attribute, INamedTypeSymbol symbol, List<DiagnosticInfo> diagnostics, CancellationToken ct)
     {
         var raw = GetArgument(attribute, 0, "Lifetime");
         if (raw is null || raw.Value.Value is null)
@@ -53,7 +53,7 @@ internal static class ServiceRegistrationExtractor
             return (ServiceLifetime)value;
         }
 
-        diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InvalidLifetime.Id, symbol.Name, attribute));
+        diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InvalidLifetime.Id, symbol.Name, attribute, ct));
         return DefaultLifetime;
     }
 
@@ -71,7 +71,8 @@ internal static class ServiceRegistrationExtractor
     private static IReadOnlyList<INamedTypeSymbol> ExtractInterfaceTypes(
         AttributeData attribute,
         INamedTypeSymbol symbol,
-        List<DiagnosticInfo> diagnostics)
+        List<DiagnosticInfo> diagnostics,
+        CancellationToken ct)
     {
         // Roslyn pads ConstructorArguments to every constructor parameter, so an omitted
         // InterfaceTypes still appears as an Array constant whose Values is a default
@@ -85,7 +86,7 @@ internal static class ServiceRegistrationExtractor
             var types = new List<INamedTypeSymbol>();
             foreach (var item in array.Values)
             {
-                CollectInterface(attribute, item, symbol, diagnostics, types);
+                CollectInterface(attribute, item, symbol, diagnostics, types, ct);
             }
 
             return DistinctTypes(types);
@@ -97,7 +98,7 @@ internal static class ServiceRegistrationExtractor
         if (single is { } constant && constant.Value is not null)
         {
             var types = new List<INamedTypeSymbol>();
-            CollectInterface(attribute, constant, symbol, diagnostics, types);
+            CollectInterface(attribute, constant, symbol, diagnostics, types, ct);
             return DistinctTypes(types);
         }
 
@@ -109,23 +110,36 @@ internal static class ServiceRegistrationExtractor
         TypedConstant constant,
         INamedTypeSymbol implementor,
         List<DiagnosticInfo> diagnostics,
-        List<INamedTypeSymbol> results)
+        List<INamedTypeSymbol> results,
+        CancellationToken ct)
     {
         if (constant.Value is not INamedTypeSymbol type)
         {
-            diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InvalidInterfaceType.Id, implementor.Name, "<null>", attribute));
+            diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InvalidInterfaceType.Id, implementor.Name, "<null>", attribute, ct));
+            return;
+        }
+
+        if (type.IsUnboundGenericType)
+        {
+            diagnostics.Add(CreateDiagnosticInfo(Diagnostics.OpenGenericServiceTypeNotSupported.Id, implementor.Name, type.ToDisplayString(), attribute, ct));
             return;
         }
 
         if (type.TypeKind != TypeKind.Interface)
         {
-            diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InvalidInterfaceType.Id, implementor.Name, type.ToDisplayString(), attribute));
+            diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InvalidInterfaceType.Id, implementor.Name, type.ToDisplayString(), attribute, ct));
+            return;
+        }
+
+        if (!IsAccessibleFromGeneratedCode(type, implementor.ContainingAssembly))
+        {
+            diagnostics.Add(CreateDiagnosticInfo(Diagnostics.ServiceTypeNotAccessible.Id, implementor.Name, type.ToDisplayString(), attribute, ct));
             return;
         }
 
         if (!implementor.AllInterfaces.Contains(type, SymbolEqualityComparer.Default))
         {
-            diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InterfaceNotImplemented.Id, implementor.Name, type.ToDisplayString(), attribute));
+            diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InterfaceNotImplemented.Id, implementor.Name, type.ToDisplayString(), attribute, ct));
             return;
         }
 
@@ -135,15 +149,17 @@ internal static class ServiceRegistrationExtractor
     private static DiagnosticInfo CreateDiagnosticInfo(
         string id,
         string arg0,
-        AttributeData attribute) => CreateDiagnosticInfo(id, arg0, string.Empty, attribute);
+        AttributeData attribute,
+        CancellationToken ct) => CreateDiagnosticInfo(id, arg0, string.Empty, attribute, ct);
 
     private static DiagnosticInfo CreateDiagnosticInfo(
         string id,
         string arg0,
         string arg1,
-        AttributeData attribute)
+        AttributeData attribute,
+        CancellationToken ct)
     {
-        var location = attribute.ApplicationSyntaxReference?.GetSyntax().GetLocation();
+        var location = attribute.ApplicationSyntaxReference?.GetSyntax(ct).GetLocation();
         var filePath = location?.SourceTree?.FilePath;
         return string.IsNullOrEmpty(filePath)
             ? new DiagnosticInfo(id, arg0, arg1)
@@ -159,7 +175,8 @@ internal static class ServiceRegistrationExtractor
     private static void ValidateImplementationType(
         INamedTypeSymbol symbol,
         AttributeData attribute,
-        List<DiagnosticInfo> diagnostics)
+        List<DiagnosticInfo> diagnostics,
+        CancellationToken ct)
     {
         var hasPublicConstructor = symbol.InstanceConstructors.Any(c => c.DeclaredAccessibility == Accessibility.Public);
         if (symbol.TypeKind == TypeKind.Class
@@ -167,25 +184,35 @@ internal static class ServiceRegistrationExtractor
             && !symbol.IsAbstract
             && !symbol.IsGenericType
             && !symbol.IsFileLocal
-            && IsAccessibleFromGeneratedCode(symbol)
+            && IsAccessibleFromGeneratedCode(symbol, symbol.ContainingAssembly)
             && hasPublicConstructor)
         {
             return;
         }
 
-        diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InvalidImplementationType.Id, symbol.Name, attribute));
+        diagnostics.Add(CreateDiagnosticInfo(Diagnostics.InvalidImplementationType.Id, symbol.Name, attribute, ct));
     }
 
-    private static bool IsAccessibleFromGeneratedCode(INamedTypeSymbol symbol)
+    /// <summary>
+    /// Whether generated code (emitted into the same assembly as the decorated class, but
+    /// outside its containing types) can reference the given type from the given assembly.
+    /// File-local types and members are never visible; internal members are only visible
+    /// within their own assembly; anything nested inside an invisible type is invisible too.
+    /// </summary>
+    private static bool IsAccessibleFromGeneratedCode(INamedTypeSymbol symbol, IAssemblySymbol codeAssembly)
     {
         for (var current = symbol; current is not null; current = current.ContainingType)
         {
-            if (current.DeclaredAccessibility is Accessibility.Private
-                or Accessibility.Protected
-                or Accessibility.ProtectedOrInternal
-                or Accessibility.ProtectedAndInternal
-                or Accessibility.ProtectedOrFriend
-                or Accessibility.ProtectedAndFriend)
+            if (current.IsFileLocal)
+            {
+                return false;
+            }
+
+            var accessibility = current.DeclaredAccessibility;
+            var visible = accessibility == Accessibility.Public
+                || (accessibility == Accessibility.Internal
+                    && SymbolEqualityComparer.Default.Equals(current.ContainingAssembly, codeAssembly));
+            if (!visible)
             {
                 return false;
             }

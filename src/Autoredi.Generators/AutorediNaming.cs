@@ -1,9 +1,39 @@
+using System.Globalization;
 using System.Text;
 
 namespace Autoredi.Generators;
 
 internal static class AutorediNaming
 {
+    /// <summary>
+    /// Unicode category helpers that iterate UTF-16 code units but interpret surrogate
+    /// pairs correctly via <see cref="CharUnicodeInfo.GetUnicodeCategory(string, int)"/>.
+    /// The generator multi-targets netstandard2.0, so Rune APIs are unavailable.
+    /// </summary>
+    private static bool IsAlphaNumericAt(string value, int index, out int width)
+    {
+        var category = CharUnicodeInfo.GetUnicodeCategory(value, index);
+        width = char.IsSurrogatePair(value, index) ? 2 : 1;
+        return category is UnicodeCategory.UppercaseLetter
+            or UnicodeCategory.LowercaseLetter
+            or UnicodeCategory.TitlecaseLetter
+            or UnicodeCategory.ModifierLetter
+            or UnicodeCategory.OtherLetter
+            or UnicodeCategory.DecimalDigitNumber
+            or UnicodeCategory.LetterNumber
+            or UnicodeCategory.OtherNumber;
+    }
+
+    private static bool IsLetterStartAt(string value, int index)
+    {
+        var category = CharUnicodeInfo.GetUnicodeCategory(value, index);
+        return category is UnicodeCategory.UppercaseLetter
+            or UnicodeCategory.LowercaseLetter
+            or UnicodeCategory.TitlecaseLetter
+            or UnicodeCategory.ModifierLetter
+            or UnicodeCategory.OtherLetter;
+    }
+
     public static string ToIdentifierFragment(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -14,15 +44,18 @@ internal static class AutorediNaming
         var builder = new StringBuilder(value.Length + 1);
         var word = new StringBuilder();
 
-        foreach (var ch in value)
+        var index = 0;
+        while (index < value.Length)
         {
-            if (char.IsLetterOrDigit(ch))
+            if (IsAlphaNumericAt(value, index, out var width))
             {
-                word.Append(ch);
+                word.Append(value, index, width);
+                index += width;
                 continue;
             }
 
             AppendWord(builder, word);
+            index += width;
         }
 
         AppendWord(builder, word);
@@ -32,7 +65,7 @@ internal static class AutorediNaming
             return "Default";
         }
 
-        if (!char.IsLetter(builder[0]) && builder[0] != '_')
+        if (!IsLetterStartAt(builder.ToString(), 0) && builder[0] != '_' && !char.IsHighSurrogate(builder[0]))
         {
             builder.Insert(0, '_');
         }
@@ -53,6 +86,12 @@ internal static class AutorediNaming
 
     /// <summary>
     /// Converts an assembly name into a namespace-safe sequence of identifier segments.
+    /// The encoding is injective: two different assembly names never produce the same
+    /// namespace, so generated types from sibling assemblies can never collide.
+    /// A readable prefix is preserved where possible; non-identifier characters are
+    /// encoded as <c>_uXXXX_</c> (lowercase hex), <c>_</c> becomes <c>__</c>, a keyword
+    /// or otherwise invalid leading segment gets a single <c>_</c> prefix, and an empty
+    /// segment becomes <c>_empty</c>.
     /// </summary>
     public static string ToNamespace(string value)
     {
@@ -115,7 +154,7 @@ internal static class AutorediNaming
         }
 
         var expected = value;
-        if (char.IsLetter(value[0]))
+        if (IsLetterStartAt(value, 0))
         {
             expected = char.ToUpperInvariant(value[0]) + value.Substring(1);
         }
@@ -125,27 +164,46 @@ internal static class AutorediNaming
 
     private static string ToNamespaceSegment(string value)
     {
-        var builder = new StringBuilder(value.Length);
-        foreach (var ch in value)
+        if (value.Length == 0)
         {
-            if (char.IsLetterOrDigit(ch) || ch == '_')
+            return "_empty";
+        }
+
+        var builder = new StringBuilder(value.Length * 2);
+        var index = 0;
+        while (index < value.Length)
+        {
+            if (IsAlphaNumericAt(value, index, out var width))
             {
-                builder.Append(ch);
+                builder.Append(value, index, width);
+                index += width;
+                continue;
             }
+
+            if (value[index] == '_')
+            {
+                builder.Append("__");
+                index += 1;
+                continue;
+            }
+
+            builder.Append("_u");
+            for (var offset = 0; offset < width; offset++)
+            {
+                builder.Append(((int)value[index + offset]).ToString("x4", CultureInfo.InvariantCulture));
+            }
+
+            builder.Append('_');
+            index += width;
         }
 
         var identifier = builder.ToString();
-        if (identifier.Length == 0)
-        {
-            return "_";
-        }
-
-        if (!char.IsLetter(identifier[0]) && identifier[0] != '_')
+        if (!IsLetterStartAt(identifier, 0) && identifier[0] != '_')
         {
             identifier = "_" + identifier;
         }
 
-        if (!SyntaxFacts.IsValidIdentifier(identifier) || SyntaxFacts.GetKeywordKind(identifier) != SyntaxKind.None)
+        if (SyntaxFacts.GetKeywordKind(identifier) != SyntaxKind.None)
         {
             identifier = "_" + identifier;
         }
@@ -161,7 +219,7 @@ internal static class AutorediNaming
         }
 
         var first = word[0];
-        builder.Append(char.ToUpperInvariant(first));
+        builder.Append(char.IsHighSurrogate(first) ? first : char.ToUpperInvariant(first));
 
         if (word.Length > 1)
         {

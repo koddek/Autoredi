@@ -348,13 +348,18 @@ services.AddAutorediServicesAccount();  // Registers only this assembly's Accoun
 // Option 3: Register every service emitted from this assembly
 services.AddAutorediServicesSamplesModularApp();
 
-// Option 4: Register all services from this assembly and its direct referenced assemblies that define Autoredi registrations
+// Option 4: Register everything: this assembly plus every referenced assembly (direct and transitive) that contributes Autoredi registrations
 services.AddAutorediServicesAll();
 ```
 
+There are two ways to register, by design:
+
+- **One assembly at a time.** `AddAutorediServices()` registers this assembly's ungrouped services; `AddAutorediServices{Group}()` registers that group for this assembly only; `AddAutorediServices{AssemblyName}()` registers every group and keyed registration that assembly contributes. Import `<TheirAssembly>.Autoredi` and call it.
+- **The whole thing in one call.** `AddAutorediServicesAll()` (executables only) registers this assembly plus the complete referenced closure: every package and project you reference, transitively down to the last one, that contributes Autoredi registrations.
+
 `AddAutorediServices` handles the ungrouped services of this assembly, while `AddAutorediServices{AssemblyName}` registers every group that assembly contributes.
 
-*Note: group methods are **per-assembly**. A group method generated in your app only knows the app's own registrations; a library contributes its groups through its own generated class. `AddAutorediServicesAll()` aggregates the current assembly and its direct referenced assemblies. For deeper dependency graphs, call each contributing generated class explicitly:*
+*Note: group methods are **per-assembly**. A group method generated in your app only knows the app's own registrations; a library contributes its groups through its own generated class. Referenced contributors register in ordinal alphabetical order; the calling assembly registers last so its own registrations win single-service resolution. For inter-library overlap, selection follows the same order; use keyed registrations when selection must be explicit. If you import two libraries' `Autoredi` namespaces and both generate an identically named method, alias one class as in the example below to avoid CS0121:*
 
 ```csharp
 using InfrastructureAutoredi = Samples.Modular.Infrastructure.Autoredi.AutorediServiceCollectionExtensions;
@@ -400,9 +405,11 @@ Generates one descriptor per unique interface, following the [registration contr
 
 ```csharp
 // emitted for a class registered as both IRepo and ICache
-TryAddAutorediDescriptor(services, ServiceDescriptor.Scoped<IRepo, RedisStore>());
-TryAddAutorediDescriptor(services, ServiceDescriptor.Scoped<ICache, RedisStore>());
+TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Scoped<IRepo, RedisStore>());
+TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Scoped<ICache, RedisStore>());
 ```
+
+Each generated method that registers interfaces builds an `AutorediIndex` (a `HashSet`-keyed lookup of the descriptors already present) when it runs, so interface registrations stay O(1) each instead of rescanning the services list.
 
 Each entry must be an interface implemented by the decorated class; otherwise the generator reports an error at compile time instead of producing broken code. The decorated class must also be non-static, non-abstract, non-generic, and have a public constructor.
 
@@ -437,6 +444,9 @@ The generator validates attribute usage instead of emitting broken code:
 | AUTOREDI012 | Error | Decorated implementation type cannot be registered by MEDI | Use a concrete, non-generic class with a public constructor |
 | AUTOREDI018 | Warning | Group name contains characters that require identifier sanitization | None required; method generated from sanitized name (`"my-group"` → `AddAutorediServicesMyGroup`) |
 | AUTOREDI023 | Error | Generated method name collision (`"All"` reserved, group vs assembly fragment, duplicate fragments) | Rename one side; colliding registrations are skipped until resolved |
+| AUTOREDI024 | Error | Service interface is not accessible from generated code (file-local, private, or nested inside an invisible type) | Make the interface public or internal at namespace level |
+| AUTOREDI025 | Warning | Referenced assembly has a generated-marker-class name but no compatible `AddAutorediServices{Assembly}(IServiceCollection)` method; it is skipped | Call the assembly's own registration methods, or upgrade that assembly to an Autoredi that emits the assembly-wide method |
+| AUTOREDI026 | Error | Open generic service type (`typeof(IFoo<>)`) is not supported | Register a closed generic interface or a non-generic interface |
 
 There is one build-time error outside the generator:
 

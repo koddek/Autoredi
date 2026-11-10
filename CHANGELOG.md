@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-11-09
+
+### Added
+- **`AddAutorediServicesAll()` now covers the complete referenced closure.** It registers the current assembly plus every referenced package or project (direct and transitive) that contributes Autoredi registrations. Previously only the calling assembly and its direct references contributed; deeper graphs were silently incomplete.
+- **New diagnostics**: `AUTOREDI024` (Error) reports an interface that cannot be referenced from generated code (file-local, private, or nested inside an invisible type) instead of emitting broken code; `AUTOREDI025` (Warning) reports a referenced assembly whose generated marker class exists but has no compatible `AddAutorediServices{Assembly}(IServiceCollection)` method (that assembly is skipped); `AUTOREDI026` (Error) reports an open generic service type (`typeof(IFoo<>)`), which is unsupported.
+- Generated methods now throw `ArgumentNullException` when passed a null `IServiceCollection` instead of failing later inside MEDI.
+
+### Changed
+- **Registration order in `AddAutorediServicesAll()`**: referenced contributors register in ordinal alphabetical order (unchanged), and the calling executable now registers **last**, so its own services win single-service resolution. Previously the calling assembly registered first and any library in the closure silently won conflicts. The inter-library order is arbitrary (metadata does not record dependency direction, and unused references are elided), so conflicts between libraries remain arbitrary; use keyed registrations when selection must be explicit.
+- **Generated namespaces for assembly names with non-identifier characters are now injective** and losslessly escaped: `_` becomes `__` and every other non-identifier character becomes `_uXXXX_` (lowercase hex); an empty segment becomes `_empty`. `Lib-One` now generates `namespace Lib_u002d_One.Autoredi`, which can no longer collide with `LibOne`, fixing CS0433 for such pairs. Assembly names with only letters, digits, dots, and underscores (the vast majority) are unaffected.
+- **Whitespace-only `group` names** (e.g. `" "`) are treated as no group and register as ungrouped services. Previously they were grouped under a sanitized `AddAutorediServicesDefault` method with a warning.
+- Built artifact namespace encoding also tightens `SyntaxFacts` validity (keywords gain a `_` prefix as before).
+- `GetSyntax()` calls in diagnostics creation now carry the cancellation token; generated methods throw on null service collections.
+
+### Fixed
+- **CS0433 across sibling assemblies**: two assemblies whose sanitized namespaces collided (e.g. `Lib-One` and `LibOne`) both emitted `<namespace>.Autoredi.AutorediServiceCollectionExtensions`, producing ambiguous-type errors for any consumer referencing both, with no Autoredi diagnostic. The injective encoding eliminates the class of collision; the aggregator additionally emits nothing that reference is not mergeable with.
+- **Generated code referenced types it could not see**: an interface that is file-local, private, or nested inside an invisible type passed validation (`AllInterfaces` matched) and the generated file failed with CS0122/CS0246 far from the cause. `AUTOREDI024` reports this at the attribute site.
+- **`AddAutorediServicesAll()` could emit calls to methods that do not exist** when a referenced assembly contained a type with the generated class name but no compatible method (CS0117), or when the marker was found but the method missing. The probe now verifies the method signature and skips the assembly with `AUTOREDI025`.
+- **O(n²) descriptor scan per entry** in interface registrations is now an O(1)-per-descriptor hash-set lookup (`AutorediIndex`), built once per generated method invocation.
+- The aggregator emitted `TryAddEnumerable` in its XML documentation although the actual mechanism is the descriptor-guarded `TryAddAutorediDescriptor`; stale wording in shipped docs corrected.
+- `AUTOREDI026` open-generic diagnoses replace a misleading `AUTOREDI007` ("does not implement") for `typeof(IFoo<>)`.
+- ASCII sanitization of astral-plane letters (they were split by UTF-16 code units and dropped); `ToIdentifierFragment`/`ToNamespaceSegment` now iterate code unit pairs correctly.
+- The "current assembly contributes" probe for `AddAutorediServicesAll()` no longer walks every type and attribute in the compilation on each edit; a syntax-level attribute predicate (cheap, incremental) decides instead.
+
 ## [0.6.0] - 2026-09-27
 
 ### Added

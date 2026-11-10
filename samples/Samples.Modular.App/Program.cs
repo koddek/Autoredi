@@ -22,7 +22,7 @@ public interface ITelemetry
 
 /// <summary>
 /// Demonstrates multi-interface registration: one attribute fans out to
-/// one TryAddEnumerable descriptor per interface.
+/// one descriptor per interface, guarded by the generated descriptor index.
 /// </summary>
 [Autoredi(ServiceLifetime.Singleton, InterfaceTypes = [typeof(IAudit), typeof(ITelemetry)])]
 public class CompositeAuditor : IAudit, ITelemetry

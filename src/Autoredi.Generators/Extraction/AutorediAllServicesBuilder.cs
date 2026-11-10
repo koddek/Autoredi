@@ -18,6 +18,8 @@ internal static class AutorediAllServicesBuilder
             b.Method("public static", "IServiceCollection", "AddAutorediServicesAll", "this IServiceCollection services");
             b.Block(methodBody =>
             {
+                methodBody.Line("if (services is null)");
+                methodBody.Block(guard => guard.Line("throw new System.ArgumentNullException(nameof(services));"));
                 foreach (var name in assemblyNames)
                 {
                     var suffix = AutorediNaming.ToAssemblyMethodSuffix(name);
@@ -35,12 +37,14 @@ internal static class AutorediAllServicesBuilder
     private static void GenerateAllServicesDocComment(SourceBuilder builder)
     {
         builder.Line("/// <summary>");
-        builder.Line("/// Registers all Autoredi services from this assembly and its direct referenced assemblies that contribute Autoredi registrations.");
+        builder.Line("/// Registers all Autoredi services from this assembly and its complete referenced closure (direct and transitive) that contribute Autoredi registrations.");
         builder.Line("/// </summary>");
         builder.Line("/// <remarks>");
-        builder.Line("/// Delegates to each contributing assembly's generated extension method, preserving that");
-        builder.Line("/// assembly's emission order (current assembly first, then referenced assemblies alphabetically).");
-        builder.Line("/// Because interface registrations use TryAddEnumerable, implementations of the same interface");
+        builder.Line("/// Referenced contributors register in ordinal alphabetical order (the metadata does not record");
+        builder.Line("/// dependency direction). The calling assembly is registered last, so its registrations win");
+        builder.Line("/// single-service resolution. For inter-library overlap, selection follows the same order;");
+        builder.Line("/// use keyed registrations when selection must be explicit.");
+        builder.Line("/// Because interface registrations use TryAddAutorediDescriptor, implementations of the same interface");
         builder.Line("/// coming from different assemblies are all kept and resolve through <c>IEnumerable&lt;T&gt;</c>.");
         builder.Line("/// Emitted only for executable projects. Existing descriptors are never replaced, and calling");
         builder.Line("/// this method more than once adds no duplicates.");

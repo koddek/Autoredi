@@ -45,7 +45,7 @@ Syntax rules:
 | `AddAutorediServices()` | This assembly's ungrouped services (everything if no groups exist). |
 | `AddAutorediServices{Group}()` | Only this assembly's named group. Sanitized identifiers warn (AUTOREDI018); name collisions error and skip (AUTOREDI023). |
 | `AddAutorediServices{Assembly}()` | Every group of this assembly. |
-| `AddAutorediServicesAll()` | Executables only: current assembly + every referenced assembly that contributes registrations (referenced assemblies are detected via their generated marker class). |
+| `AddAutorediServicesAll()` | Executables only: current assembly + the complete referenced closure (direct and transitive: every package and project reference) that contributes registrations. Contributing referenced assemblies register in ordinal alphabetical order; the calling assembly registers last, so its registrations win single-service resolution. |
 
 ## Registration contract
 
@@ -54,8 +54,9 @@ Generated methods fill gaps and never replace what is already registered.
 Self-registration (no `interfaceType`): `services.TryAddSingleton<T>();` — the exact MEDI `TryAdd` guarantee.
 
 Interface registration (with `interfaceType` or `InterfaceTypes`): the emitted line is
-`TryAddAutorediDescriptor(services, ServiceDescriptor.<Lifetime><IFoo, Foo>());`. That helper makes one
-pass over the descriptors already registered for the same service type and key:
+`TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.<Lifetime><IFoo, Foo>());`. The calling
+method builds an `AutorediIndex` (a hash set of the service type + key + implementation type combinations
+already registered) so the check is O(1) per descriptor instead of a rescan. Resolution semantics:
 
 | Already present for that service type + key | Result |
 |---|---|
@@ -104,7 +105,7 @@ Multi-interface in one attribute:
 [Autoredi(ServiceLifetime.Scoped, InterfaceTypes = [typeof(IRepo), typeof(ICache)])]
 public sealed class RedisStore : IRepo, ICache { }
 // emits one TryAddAutorediDescriptor call per interface, e.g.
-//   TryAddAutorediDescriptor(services, ServiceDescriptor.Scoped<IRepo, RedisStore>());
+//   TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Scoped<IRepo, RedisStore>());
 ```
 
 Cross-assembly selective registration from a library's generated class:
@@ -125,6 +126,9 @@ InfrastructureAutoredi.AddAutorediServicesStorage(services);     // one library 
 | AUTOREDI012 | Error | Decorated implementation type cannot be registered by MEDI. |
 | AUTOREDI018 | Warning | Group name contains characters that require identifier sanitization. |
 | AUTOREDI023 | Error | Two generated methods would share a name ("All" reserved, group vs assembly fragment). Later registrations skipped until renamed. |
+| AUTOREDI024 | Error | Interface is not accessible from generated code (file-local, private, or nested inside an invisible type). |
+| AUTOREDI025 | Warning | Referenced assembly has the expected marker class name but no compatible `AddAutorediServices{Assembly}(IServiceCollection)` method; it is skipped. Upgrade that assembly or call its methods directly. |
+| AUTOREDI026 | Error | Open generic service type (`typeof(IFoo<>)`) is not supported. Use a closed generic or a non-generic interface. |
 
 Build-time error outside the generator: `AUTOREDI001` means `dotnet pack` ran without `Autoredi.snk`
 next to `Directory.Build.props` and would have published an unsigned package. A plain `dotnet build`
@@ -137,8 +141,12 @@ Fix guidance: use a concrete implementation with a public constructor, rename th
 - Generated namespace is per-assembly: missing `using X.Autoredi;` surfaces as CS1061 "no extension method AddAutorediServices".
 - The decorated type must be a concrete, non-generic class with a public constructor.
 - An assembly whose method fragment would be `All` uses the `AddAutorediServicesAllAssembly` fallback for its assembly-wide method.
+- Assembly names with characters legal in identifiers are used as-is; everything else is escaped losslessly (`-` → `_u002d_`, `_` → `__`), so `Lib-One` generates `namespace Lib_u002d_One.Autoredi;` and can never collide with a `LibOne` assembly.
 - `AddAutorediServicesAll()` exists only in executable projects; libraries must aggregate explicitly or expose their own methods.
-- It only aggregates **direct** referenced assemblies, one level deep. For a deeper graph, call each contributing generated class explicitly.
+- It aggregates the complete **transitive** reference closure: every referenced package and project, direct or indirect, that contributes registrations (detected via the generated marker class; an assembly built with Autoredi 0.4 or earlier has no marker and is silently skipped).
+- Transitivity comes from the SDK: for typical `net8.0`+ builds the compiler sees the full package/project closure directly, so the probe finds libraries referenced only transitively. References whose assemblies carry no Autoredi generated code are ignored.
+- Group methods are per-assembly. `AddAutorediServices{Assembly}()` is the per-library "register everything this library contributes" call; `AddAutorediServicesAll()` is the single call for the whole closure.
+- Two libraries can generate a method with the same name (e.g. two `Storage` groups). Importing both Autoredi namespaces and calling it unqualified is CS0121; alias one class (`using InfrastructureAutoredi = MyApp.Infrastructure.Autoredi.AutorediServiceCollectionExtensions;`).
 - Group methods are per-assembly by design; there is no automatic cross-assembly group fan-out.
 - MEDI resolves each service type independently — two interfaces backed by one singleton class produce two instances unless you register an instance manually (standard MEDI behavior, not an Autoredi quirk).
 - `Priority` orders descriptors inside one generated method. It does not decide which implementation MEDI returns for a single service; use keyed registrations for that.

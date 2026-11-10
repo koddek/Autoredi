@@ -23,7 +23,7 @@ public class AutorediGeneratorTests
     }
 
     [Test]
-    public async Task SingleInterface_EmitsGuardedTryAddEnumerable()
+    public async Task SingleInterface_EmitsDescriptorGuardedByIndex()
     {
         var (diagnostics, sources) = GeneratorTestHarness.Run("""
             namespace Probe;
@@ -36,10 +36,11 @@ public class AutorediGeneratorTests
 
         // Interface registrations go through a helper instead of a bare TryAdd: a per-assembly
         // TryAdd drops implementations contributed by other assemblies, while a bare
-        // TryAddEnumerable lets a generated descriptor outrank a hand-written one.
+        // TryAddEnumerable lets a generated descriptor outrank a hand-written one. The helper
+        // consults a per-method index of existing descriptors.
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "TryAddAutorediDescriptor(services, ServiceDescriptor.Scoped<global::Probe.IFoo, global::Probe.FooImpl>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Scoped<global::Probe.IFoo, global::Probe.FooImpl>());")).IsTrue();
         await Assert.That(GeneratorTestHarness.SourceContains(sources, "private static void TryAddAutorediDescriptor(")).IsTrue();
         await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
     }
@@ -61,16 +62,16 @@ public class AutorediGeneratorTests
 
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "TryAddAutorediDescriptor(services, ServiceDescriptor.Singleton<global::Probe.IRepo, global::Probe.Store>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Singleton<global::Probe.IRepo, global::Probe.Store>());")).IsTrue();
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "TryAddAutorediDescriptor(services, ServiceDescriptor.Singleton<global::Probe.ICache, global::Probe.Store>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Singleton<global::Probe.ICache, global::Probe.Store>());")).IsTrue();
         // Interfaces-only: no self registration when interfaces are requested.
         await Assert.That(GeneratorTestHarness.SourceContains(sources, "TryAddSingleton<global::Probe.Store>()")).IsFalse();
     }
 
     [Test]
-    public async Task TwoImplementations_SameInterface_UsesTryAddEnumerable()
+    public async Task TwoImplementations_SameInterface_CoexistThroughIndex()
     {
         var (_, sources) = GeneratorTestHarness.Run("""
             namespace Probe;
@@ -86,10 +87,10 @@ public class AutorediGeneratorTests
 
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "TryAddAutorediDescriptor(services, ServiceDescriptor.Transient<global::Probe.IRepo, global::Probe.RepoA>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Transient<global::Probe.IRepo, global::Probe.RepoA>());")).IsTrue();
         await Assert.That(GeneratorTestHarness.SourceContains(
             sources,
-            "TryAddAutorediDescriptor(services, ServiceDescriptor.Transient<global::Probe.IRepo, global::Probe.RepoB>());")).IsTrue();
+            "TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Transient<global::Probe.IRepo, global::Probe.RepoB>());")).IsTrue();
     }
 
     [Test]
@@ -342,7 +343,7 @@ public class AutorediGeneratorTests
             """);
 
         var source = sources[Main];
-        var descriptor = "ServiceDescriptor.Singleton<global::Probe.IFoo, global::Probe.Store>()";
+        var descriptor = "TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Singleton<global::Probe.IFoo, global::Probe.Store>());";
         await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
         // Once per generated method that registers this target (default + assembly-wide).
         await Assert.That(source.Split(descriptor, StringSplitOptions.None).Length - 1).IsEqualTo(2);
@@ -359,9 +360,9 @@ public class AutorediGeneratorTests
             """, "Probe-Assembly", generateAggregator: true);
 
         await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
-        await Assert.That(sources[Main]).Contains("namespace ProbeAssembly.Autoredi;");
+        await Assert.That(sources[Main]).Contains("namespace Probe_u002d_Assembly.Autoredi;");
         await Assert.That(sources["AutorediServices.All.g.cs"])
-            .Contains("global::ProbeAssembly.Autoredi.AutorediServiceCollectionExtensions");
+            .Contains("global::Probe_u002d_Assembly.Autoredi.AutorediServiceCollectionExtensions");
     }
 
     [Test]
@@ -394,6 +395,69 @@ public class AutorediGeneratorTests
         await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
         await Assert.That(sources["AutorediServices.All.g.cs"])
             .Contains("AddAutorediServicesProbe(services);");
+    }
+
+    [Test]
+    public async Task WhitespaceOnlyGroup_RegistersAsUngrouped()
+    {
+        var (diagnostics, sources) = GeneratorTestHarness.Run("""
+            namespace Probe;
+
+            [global::Autoredi.Attributes.Autoredi(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton, group: " ")]
+            public class Ungrouped { }
+            """);
+
+        await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
+        await Assert.That(GeneratorTestHarness.SourceContains(sources, "TryAddSingleton<global::Probe.Ungrouped>()")).IsTrue();
+    }
+
+    [Test]
+    public async Task PrivateNestedInterface_ReportsAutoredi024()
+    {
+        var (diagnostics, _) = GeneratorTestHarness.Run("""
+            namespace Probe;
+            public class Outer
+            {
+                private interface ISecret { }
+
+                [global::Autoredi.Attributes.Autoredi(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton, typeof(ISecret))]
+                public class Store : ISecret { }
+            }
+            """);
+
+        await Assert.That(GeneratorTestHarness.HasDiagnostic(diagnostics, "AUTOREDI024")).IsTrue();
+        await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
+    }
+
+    [Test]
+    public async Task FileLocalInterface_ReportsAutoredi024()
+    {
+        var (diagnostics, _) = GeneratorTestHarness.Run("""
+            namespace Probe;
+            file interface ILocal { }
+
+            [global::Autoredi.Attributes.Autoredi(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton, typeof(ILocal))]
+            public class Store : ILocal { }
+            """);
+
+        await Assert.That(GeneratorTestHarness.HasDiagnostic(diagnostics, "AUTOREDI024")).IsTrue();
+        await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
+    }
+
+    [Test]
+    public async Task OpenGenericInterface_ReportsAutoredi026()
+    {
+        var (diagnostics, _) = GeneratorTestHarness.Run("""
+            namespace Probe;
+            public interface IRepo<T> { }
+            public class Store : IRepo<int> { }
+
+            [global::Autoredi.Attributes.Autoredi(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton, typeof(IRepo<>))]
+            public class Registration { }
+            """);
+
+        await Assert.That(GeneratorTestHarness.HasDiagnostic(diagnostics, "AUTOREDI026")).IsTrue();
+        await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
     }
 
     [Test]
