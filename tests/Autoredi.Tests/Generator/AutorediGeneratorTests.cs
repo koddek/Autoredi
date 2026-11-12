@@ -445,18 +445,61 @@ public class AutorediGeneratorTests
     }
 
     [Test]
-    public async Task OpenGenericInterface_ReportsAutoredi026()
+    public async Task OpenGenericInterface_OnGenericImplementation_EmitsOpenGenericDescriptor()
+    {
+        var (diagnostics, sources) = GeneratorTestHarness.Run("""
+            namespace Probe;
+            public interface IRepo<T> { }
+            [global::Autoredi.Attributes.Autoredi(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped, typeof(IRepo<>))]
+            public class Repo<T> : IRepo<T> { }
+            """);
+
+        await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
+        await Assert.That(GeneratorTestHarness.SourceContains(
+            sources,
+            "ServiceDescriptor.Scoped(typeof(global::Probe.IRepo<>), typeof(global::Probe.Repo<>))")).IsTrue();
+        await Assert.That(GeneratorTestHarness.SourceContains(sources, "TryAddAutorediDescriptor")).IsTrue();
+    }
+
+    [Test]
+    public async Task OpenGenericInterface_TypeParameterArityMismatch_ReportsAutoredi027()
     {
         var (diagnostics, _) = GeneratorTestHarness.Run("""
             namespace Probe;
             public interface IRepo<T> { }
-            public class Store : IRepo<int> { }
-
-            [global::Autoredi.Attributes.Autoredi(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton, typeof(IRepo<>))]
-            public class Registration { }
+            [global::Autoredi.Attributes.Autoredi(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped, typeof(IRepo<>))]
+            public class Repo<A, B> : IRepo<A> { }
             """);
 
-        await Assert.That(GeneratorTestHarness.HasDiagnostic(diagnostics, "AUTOREDI026")).IsTrue();
+        await Assert.That(GeneratorTestHarness.HasDiagnostic(diagnostics, "AUTOREDI027")).IsTrue();
+        await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
+    }
+
+    [Test]
+    public async Task OpenGenericInterface_PositionalTypeParameterMismatch_ReportsAutoredi027()
+    {
+        var (diagnostics, _) = GeneratorTestHarness.Run("""
+            namespace Probe;
+            public interface IRepo<T1, T2> { }
+            [global::Autoredi.Attributes.Autoredi(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped, typeof(IRepo<,>))]
+            public class Repo<A, B> : IRepo<B, A> { }
+            """);
+
+        await Assert.That(GeneratorTestHarness.HasDiagnostic(diagnostics, "AUTOREDI027")).IsTrue();
+        await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
+    }
+
+    [Test]
+    public async Task OpenGenericInterface_NotImplemented_ReportsAutoredi007()
+    {
+        var (diagnostics, _) = GeneratorTestHarness.Run("""
+            namespace Probe;
+            public interface IRepo<T> { }
+            [global::Autoredi.Attributes.Autoredi(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped, typeof(IRepo<>))]
+            public class Repo<T> { }
+            """);
+
+        await Assert.That(GeneratorTestHarness.HasDiagnostic(diagnostics, "AUTOREDI007")).IsTrue();
         await Assert.That(GeneratorTestHarness.HasCompilationErrors(diagnostics)).IsFalse();
     }
 

@@ -5,7 +5,7 @@
 [![GitHub Package Downloads](https://img.shields.io/badge/downloads-0-blue?logo=github)](https://nuget.pkg.github.com/koddek/index.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Autoredi is a powerful source generator for .NET that simplifies dependency injection (DI) by automatically registering services in your Microsoft.Extensions.DependencyInjection container. With the `[Autoredi]` attribute, you can declaratively configure services with lifetimes, interfaces, and keys, reducing boilerplate and enhancing maintainability. Whether you're registering simple concrete classes, single interface implementations, or complex keyed services, Autoredi streamlines your DI setup.
+Autoredi is a powerful source generator for .NET that simplifies dependency injection (DI) by automatically registering services in your Microsoft.Extensions.DependencyInjection container. With the `[Autoredi]` attribute, you can declaratively configure services with lifetimes, interfaces, keys, and open generic families, reducing boilerplate and enhancing maintainability. Whether you're registering simple concrete classes, single interface implementations, or complex keyed services, Autoredi streamlines your DI setup.
 
 Autoredi is on [nuget.org](https://www.nuget.org/packages/Autoredi/), so `dotnet restore` and the IDE package manager find and update it automatically. A copy is also published to GitHub Packages for the release pipeline.
 
@@ -21,6 +21,7 @@ Autoredi is on [nuget.org](https://www.nuget.org/packages/Autoredi/), so `dotnet
 - [Grouped Registration](#grouped-registration)
   - [Priority Ordering](#priority-ordering)
   - [Multiple Interfaces](#multiple-interfaces)
+  - [Open Generic Registrations](#open-generic-registrations)
 - [Generated API Reference](#generated-api-reference)
 - [Compile-Time Diagnostics](#compile-time-diagnostics)
 - [Agent Guidance](#agent-guidance)
@@ -38,7 +39,9 @@ dotnet add package Microsoft.Extensions.DependencyInjection
 
 Autoredi references `Microsoft.Extensions.DependencyInjection.Abstractions` for its generated API. The full `Microsoft.Extensions.DependencyInjection` package supplies `ServiceCollection` and `BuildServiceProvider` in application and sample hosts.
 
-The package multi-targets `netstandard2.0` and `net10.0`, so it can be referenced from older class libraries, net8.0/net9.0 projects, and current .NET 10 projects alike. The analyzer itself is `netstandard2.0`, so the generator runs on every supported SDK.
+Target framework details: `net11.0` consumers need no MEDI package at all, because the abstractions ship in the .NET 11 shared framework. Consumers on `netstandard2.0` or `net10.0` pull `Microsoft.Extensions.DependencyInjection.Abstractions` 11.0.0 with the package.
+
+The package multi-targets `netstandard2.0`, `net10.0`, and `net11.0`, so it can be referenced from older class libraries, net8.0/net9.0 projects, and current .NET 10/11 projects alike. The analyzer itself is `netstandard2.0` and self-contained, so the generator runs on every supported SDK.
 
 ## Usage
 
@@ -48,7 +51,7 @@ Autoredi makes dependency injection effortless by generating DI registration cod
 
 ### Registration contract
 
-Every generated method fills gaps and never replaces what is already there. For self-registrations that is plain `TryAdd<T>()`. For an interface registration the generated code makes one pass over the existing descriptors for the same service type and key, then:
+Every generated method fills gaps and never replaces what is already there. For self-registrations that is plain `TryAdd<T>()`. For an interface registration the generated code makes one pass over the existing descriptors for the same service type and key, then (open generic registrations flow through the same check):
 
 | Already registered for that service type + key | Generated registration |
 |---|---|
@@ -411,7 +414,33 @@ TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Scoped<ICach
 
 Each generated method that registers interfaces builds an `AutorediIndex` (a `HashSet`-keyed lookup of the descriptors already present) when it runs, so interface registrations stay O(1) each instead of rescanning the services list.
 
-Each entry must be an interface implemented by the decorated class; otherwise the generator reports an error at compile time instead of producing broken code. The decorated class must also be non-static, non-abstract, non-generic, and have a public constructor.
+Each entry must be an interface implemented by the decorated class; otherwise the generator reports an error at compile time instead of producing broken code. The decorated class must also be non-static, non-abstract, non-generic, and have a public constructor (unless it registers open generic service types, see below).
+
+### Open Generic Registrations
+
+One attribute can register a generic implementation against a generic interface family. Use `typeof(IFoo<>)` and the generator emits an open generic descriptor for every construction of the interface:
+
+```csharp
+[Autoredi(ServiceLifetime.Scoped, typeof(IRepository<>))]
+public sealed class SqlRepository<T> : IRepository<T> { }
+```
+
+Emitted once, consumed for any closed construction:
+
+```csharp
+// emitted for the class above
+TryAddAutorediDescriptor(services, autorediIndex,
+    ServiceDescriptor.Scoped(typeof(global::MyApp.IRepository<>), typeof(global::MyApp.SqlRepository<>)));
+```
+
+Resolving `IRepository<User>`, `IRepository<Order>`, ... then works with no extra configuration, and `IEnumerable<IRepository<User>>` resolves every implementation. The [registration contract](#registration-contract) applies exactly as it does for closed registrations: no duplicates on a repeat call, every implementation kept, instance and factory registrations you write yourself win.
+
+Rules:
+
+- The implementation must be a generic class whose type parameters **map positionally** to the interface's type parameters (`class Repo<A, B> : IRepo<A, B>` works; `class Repo<A, B> : IRepo<B, A>` does not). Otherwise the generator reports `AUTOREDI027` and emits no registration.
+- Every requested service type must be an open generic definition (`typeof(IRepo<>))`). Mixing an open generic with a closed entry on the same generic class reports `AUTOREDI012`, because a closed descriptor cannot be expressed for an open implementation.
+- Keyed open generics work the same way: `[Autoredi(ServiceLifetime.Scoped, typeof(IRepository<>), "sql")]` emits `ServiceDescriptor.KeyedScoped(typeof(...), "sql", typeof(...))`.
+- Nothing is registered for a partially matching implementation; the whole decorated class is all-or-nothing when a request fails validation.
 
 ## Generated API Reference
 
@@ -441,12 +470,12 @@ The generator validates attribute usage instead of emitting broken code:
 | AUTOREDI007 | Error | Class does not implement the requested interface | Implement it or remove `interfaceType`/entry |
 | AUTOREDI010 | Error | Invalid `ServiceLifetime` value | Use Singleton (0), Scoped (1), or Transient (2) |
 | AUTOREDI011 | Error | Requested service type is not an interface (or null) | Pass an interface type |
-| AUTOREDI012 | Error | Decorated implementation type cannot be registered by MEDI | Use a concrete, non-generic class with a public constructor |
+| AUTOREDI012 | Error | Decorated implementation type cannot be registered by MEDI | Use a concrete, non-generic class with a public constructor, or a generic class with positionally mapped type parameters and only open generic requests |
 | AUTOREDI018 | Warning | Group name contains characters that require identifier sanitization | None required; method generated from sanitized name (`"my-group"` → `AddAutorediServicesMyGroup`) |
 | AUTOREDI023 | Error | Generated method name collision (`"All"` reserved, group vs assembly fragment, duplicate fragments) | Rename one side; colliding registrations are skipped until resolved |
 | AUTOREDI024 | Error | Service interface is not accessible from generated code (file-local, private, or nested inside an invisible type) | Make the interface public or internal at namespace level |
 | AUTOREDI025 | Warning | Referenced assembly has a generated-marker-class name but no compatible `AddAutorediServices{Assembly}(IServiceCollection)` method; it is skipped | Call the assembly's own registration methods, or upgrade that assembly to an Autoredi that emits the assembly-wide method |
-| AUTOREDI026 | Error | Open generic service type (`typeof(IFoo<>)`) is not supported | Register a closed generic interface or a non-generic interface |
+| AUTOREDI027 | Error | The implementation's type parameters do not map positionally to the requested open generic service type (arity or order mismatch) | Use a generic class whose type parameters match the interface's positionally |
 
 There is one build-time error outside the generator:
 

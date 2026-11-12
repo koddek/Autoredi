@@ -16,7 +16,10 @@ namespace Autoredi.Attributes;
 /// </para>
 /// <para>
 /// The decorated type must be a non-static, non-abstract, non-generic class with a public
-/// constructor. The generator reports invalid implementation types as AUTOREDI012.
+/// constructor, unless every requested service type is an open generic definition
+/// (<c>typeof(IFoo&lt;&gt;)</c>); then the class must be a generic class whose type parameters map
+/// positionally to the interface's (otherwise AUTOREDI027). The generator reports invalid
+/// implementation types as AUTOREDI012.
 /// </para>
 /// <para>
 /// All generated registrations use TryAdd semantics: they fill gaps and never replace an
@@ -41,6 +44,13 @@ namespace Autoredi.Attributes;
 /// <code>
 /// [Autoredi(ServiceLifetime.Scoped, typeof(IRepository), "sql")]
 /// public class SqlRepository : IRepository { }
+/// </code>
+/// </example>
+/// <example>
+/// Register an open generic family (the implementation's type parameters map positionally to the interface's):
+/// <code>
+/// [Autoredi(ServiceLifetime.Scoped, typeof(IRepository&lt;&gt;))]
+/// public sealed class SqlRepository&lt;T&gt; : IRepository&lt;T&gt; { }
 /// </code>
 /// </example>
 /// <param name="lifetime">

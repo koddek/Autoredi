@@ -67,13 +67,18 @@ try {
   for (const requiredEntry of [
     "lib/netstandard2.0/Autoredi.dll",
     "lib/net10.0/Autoredi.dll",
+    "lib/net11.0/Autoredi.dll",
     "analyzers/dotnet/cs/Autoredi.Generators.dll",
-    "analyzers/dotnet/cs/Flowgen.dll",
     "skills/Autoredi/SKILL.md",
   ]) {
     if (!packageEntries.includes(requiredEntry)) {
       throw new Error(`Packed Autoredi is missing ${requiredEntry}.`);
     }
+  }
+  // The analyzer must be self-contained: a stray Flowgen.dll (or any third-party analyzer)
+  // would ship unreviewed code inside every consumer's compiler host.
+  if (packageEntries.includes("analyzers/dotnet/cs/Flowgen.dll")) {
+    throw new Error("Packed Autoredi ships Flowgen.dll; the analyzer must be self-contained.");
   }
 
   writeFileSync(
@@ -89,10 +94,10 @@ try {
 `,
   );
 
-  // The package is consumed from more than one target framework on purpose: net10.0 proves
+  // The package is consumed from more than one target framework on purpose: net11.0 proves
   // the current path, net8.0 proves the netstandard2.0 asset really is usable, which is the
   // whole reason the package multi-targets.
-  const consumerFrameworks = ["net10.0", "net8.0"];
+  const consumerFrameworks = ["net11.0", "net8.0"];
   for (const framework of consumerFrameworks) {
     const consumerDir = join(tempRoot, `consumer-${framework}`);
     const consumerProject = join(consumerDir, "Consumer.csproj");
@@ -108,7 +113,7 @@ try {
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Autoredi" Version="${version}" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
   </ItemGroup>
 </Project>
 `,

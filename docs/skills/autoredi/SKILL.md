@@ -1,6 +1,6 @@
 ---
 name: autoredi
-description: Register .NET services in Microsoft.Extensions.DependencyInjection at compile time with [Autoredi] attributes and generated extension methods (fill-gaps registration contract, keyed services, groups, multi-interface, cross-assembly aggregation). Use when a project references the Autoredi NuGet package, when writing or fixing classes decorated with [Autoredi], when calling AddAutorediServices* methods, or when diagnosing AUTOREDI00x build errors.
+description: Register .NET services in Microsoft.Extensions.DependencyInjection at compile time with [Autoredi] attributes and generated extension methods (fill-gaps registration contract, keyed services, open generics, groups, multi-interface, cross-assembly aggregation). Use when a project references the Autoredi NuGet package, when writing or fixing classes decorated with [Autoredi], when calling AddAutorediServices* methods, or when diagnosing AUTOREDI00x build errors.
 ---
 
 # Autoredi
@@ -14,7 +14,7 @@ Compile-time DI registration for Microsoft.Extensions.DependencyInjection. Put `
 3. Consumer code must `using <AssemblyName>.Autoredi;` — child namespaces are not auto-visible.
 4. Call the generated method(s) during composition root setup.
 
-The package targets `netstandard2.0` and `net10.0`, so referencing it works from net8.0/net9.0 and older class libraries too.
+The package targets `netstandard2.0`, `net10.0`, and `net11.0`, so referencing it works from net8.0/net9.0, .NET 10, .NET 11, and older class libraries too.
 
 ## Attribute quick reference
 
@@ -30,9 +30,13 @@ The package targets `netstandard2.0` and `net10.0`, so referencing it works from
 | `serviceKey` | null | Keyed registration (MEDI 8+). Resolve via `GetKeyedService(key)` or `[FromKeyedServices]`. |
 | `group` | null | Partitions registrations into separate generated methods. |
 | `priority` | 0 | Higher emitted first within the selected method; ties break alphabetically by type name. It orders descriptors, not MEDI's single-service winner. |
-| `InterfaceTypes` (property) | null | One descriptor per unique interface; replaces `interfaceType`; no self-registration when non-empty. |
+| `InterfaceTypes` (property) | null | One descriptor per unique interface; replaces `interfaceType`; no self-registration when non-empty. Entries may be open generic definitions (`typeof(IFoo<>)`) when the class is a generic implementation. |
 
-The decorated type must be a non-static, non-abstract, non-generic class with a public constructor. Invalid implementation types produce AUTOREDI012.
+The decorated type must be a non-static, non-abstract, non-generic class with a public constructor, unless it registers open generic service types (see below). Invalid implementation types produce AUTOREDI012.
+
+### Open generics
+
+`typeof(IFoo<>)` requests an open generic service type. The decorated class must be a generic class whose type parameters map positionally to the service type's parameters (`class Repo<A, B> : IRepo<A, B>` works, `class Repo<A, B> : IRepo<B, A>` does not); otherwise the generator reports AUTOREDI027. The request cannot be mixed with closed entries on the same class (AUTOREDI012). Keyed open generics work the same as closed ones. The registration contract is identical: `TryAddAutorediDescriptor` decides via the same per-method index, so every construction follows the same all-implementations-kept rule.
 
 Syntax rules:
 - Positional args cannot skip: `[Autoredi(typeof(X))]` is illegal — pass lifetime first or use named form for later params (`group:`, `priority:`).
@@ -51,7 +55,7 @@ Syntax rules:
 
 Generated methods fill gaps and never replace what is already registered.
 
-Self-registration (no `interfaceType`): `services.TryAddSingleton<T>();` — the exact MEDI `TryAdd` guarantee.
+Self-registration (no `interfaceType`): `services.TryAddSingleton<T>();` — the exact MEDI `TryAdd` guarantee. Keyed self registrations emit the matching `TryAddKeyedTransient/Scoped/Singleton`.
 
 Interface registration (with `interfaceType` or `InterfaceTypes`): the emitted line is
 `TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.<Lifetime><IFoo, Foo>());`. The calling
@@ -108,6 +112,16 @@ public sealed class RedisStore : IRepo, ICache { }
 //   TryAddAutorediDescriptor(services, autorediIndex, ServiceDescriptor.Scoped<IRepo, RedisStore>());
 ```
 
+Open generic registration in one attribute:
+
+```csharp
+[Autoredi(ServiceLifetime.Scoped, typeof(IRepository<>))]
+public sealed class SqlRepository<T> : IRepository<T> { }
+// one open generic descriptor; every closed construction resolves afterwards:
+//   provider.GetRequiredService<IRepository<User>>()
+// keyed: [Autoredi(ServiceLifetime.Scoped, typeof(IRepository<>), "sql")]
+```
+
 Cross-assembly selective registration from a library's generated class:
 
 ```csharp
@@ -128,7 +142,7 @@ InfrastructureAutoredi.AddAutorediServicesStorage(services);     // one library 
 | AUTOREDI023 | Error | Two generated methods would share a name ("All" reserved, group vs assembly fragment). Later registrations skipped until renamed. |
 | AUTOREDI024 | Error | Interface is not accessible from generated code (file-local, private, or nested inside an invisible type). |
 | AUTOREDI025 | Warning | Referenced assembly has the expected marker class name but no compatible `AddAutorediServices{Assembly}(IServiceCollection)` method; it is skipped. Upgrade that assembly or call its methods directly. |
-| AUTOREDI026 | Error | Open generic service type (`typeof(IFoo<>)`) is not supported. Use a closed generic or a non-generic interface. |
+| AUTOREDI027 | Error | Implementation type parameters do not map positionally to the requested open generic service type. |
 
 Build-time error outside the generator: `AUTOREDI001` means `dotnet pack` ran without `Autoredi.snk`
 next to `Directory.Build.props` and would have published an unsigned package. A plain `dotnet build`
@@ -139,7 +153,7 @@ Fix guidance: use a concrete implementation with a public constructor, rename th
 ## Gotchas
 
 - Generated namespace is per-assembly: missing `using X.Autoredi;` surfaces as CS1061 "no extension method AddAutorediServices".
-- The decorated type must be a concrete, non-generic class with a public constructor.
+- The decorated type must be a concrete, non-generic class with a public constructor, unless every requested service type is an open generic definition (`typeof(IFoo<>)`), in which case the class must be a generic class whose type parameters map positionally to the interface's (otherwise AUTOREDI027).
 - An assembly whose method fragment would be `All` uses the `AddAutorediServicesAllAssembly` fallback for its assembly-wide method.
 - Assembly names with characters legal in identifiers are used as-is; everything else is escaped losslessly (`-` → `_u002d_`, `_` → `__`), so `Lib-One` generates `namespace Lib_u002d_One.Autoredi;` and can never collide with a `LibOne` assembly.
 - `AddAutorediServicesAll()` exists only in executable projects; libraries must aggregate explicitly or expose their own methods.

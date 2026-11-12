@@ -10,106 +10,78 @@ public sealed class AutorediGenerator : IIncrementalGenerator
     {
         // The per-assembly extension methods carry the registrations. This pipeline derives
         // everything the cross-assembly aggregator needs, cheaply and incrementally:
-        // - a syntax-level scan for Autoredi attribute usage in the current assembly, which
-        //   picks up both user code and generated code produced by other analyzers;
+        // - an attribute scan that only inspects type declarations (Autoredi targets a class,
+        //   so every other syntax node is skipped without a semantic lookup);
         // - a compilation-level probe of the referenced assembly symbols, which for typical
         //   SDK builds already sees the full transitive closure of package and project
         //   references (the marker probe itself is O(1) per assembly).
-        var selfContribution = context.SyntaxProvider.CreateSyntaxProvider(
-                static (node, _) => node is AttributeSyntax attribute && IsAutorediAttributeName(attribute.Name),
-                static (_, _) => true)
-            .Collect()
-            .Select(static (hits, _) => !hits.IsDefaultOrEmpty)
-            .WithTrackingName("Autoredi.SelfAttributeSyntax");
+        // Both outputs derive from the same provider instance so Roslyn caches the transform once.
+        var targets = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                Names.AutorediAttFullName,
+                static (node, _) => node is TypeDeclarationSyntax,
+                static (attributeContext, ct) => ServiceRegistrationExtractor.Extract(attributeContext, ct))
+            .Where(static target => target is not null)
+            .WithTrackingName("Autoredi.AttributeTargets")
+            .Collect();
 
         var referenceProbe = context.CompilationProvider
             .Select(static (compilation, ct) => AutorediAllServicesSource.Probe(compilation, ct))
             .WithTrackingName("Autoredi.ReferencedAssemblyProbe");
 
+        var selfContribution = targets.Select(static (items, _) => !items.IsEmpty);
+
+        context.RegisterSourceOutput(targets, EmitRegistrations);
         context.RegisterSourceOutput(
             selfContribution.Combine(referenceProbe),
-            (spc, pair) => AutorediAllServicesSource.Emit(spc, pair.Left, pair.Right));
-
-        Flow.Create()
-            .ForAttributeWithMetadataName(Names.AutorediAttFullName)
-            .Select(ServiceRegistrationExtractor.Extract)
-            .Collect()
-            .EmitAll((spc, targets) =>
-            {
-                if (targets.IsDefaultOrEmpty)
-                {
-                    return;
-                }
-
-                var present = targets.OfType<AutorediTarget>().ToImmutableArray();
-                if (present.IsEmpty)
-                {
-                    return;
-                }
-
-                // Extract-time validation issues (invalid lifetime/interface arguments).
-                foreach (var target in present)
-                {
-                    foreach (var info in target.Diagnostics.Values)
-                    {
-                        spc.ReportDiagnostic(CreateDiagnostic(info));
-                    }
-                }
-
-                // Emit even when every target is invalid so consumer calls to the generated
-                // extension methods still compile; the diagnostics above explain the gaps.
-                var assemblyName = present[0].AssemblyName;
-                var targetNamespace = AutorediNaming.ToNamespace(assemblyName) + ".Autoredi";
-                var result = AutorediSourceBuilder.Generate(present, targetNamespace, assemblyName);
-
-                // Output-stage issues (group-name warnings, method-name collisions).
-                foreach (var diagnostic in result.Diagnostics)
-                {
-                    spc.ReportDiagnostic(diagnostic);
-                }
-
-                spc.AddSource("AutorediServices.g.cs", result.Source);
-            })
-            .Build()
-            .Initialize(context);
+            static (spc, pair) => AutorediAllServicesSource.Emit(spc, pair.Left, pair.Right));
     }
 
-    private static Diagnostic CreateDiagnostic(DiagnosticInfo info)
+    private static void EmitRegistrations(SourceProductionContext spc, ImmutableArray<AutorediTarget?> targets)
     {
-        var descriptor = ResolveDescriptor(info.Id);
+        if (targets.IsDefaultOrEmpty)
+        {
+            return;
+        }
+
+        var present = targets.OfType<AutorediTarget>().ToImmutableArray();
+        if (present.IsEmpty)
+        {
+            return;
+        }
+
+        // Extract-time validation issues (invalid lifetime/interface arguments).
+        foreach (var target in present)
+        {
+            foreach (var info in target.Diagnostics.Values)
+            {
+                spc.ReportDiagnostic(ToDiagnostic(info));
+            }
+        }
+
+        // Emit even when every target is invalid so consumer calls to the generated
+        // extension methods still compile; the diagnostics above explain the gaps.
+        var assemblyName = present[0].AssemblyName;
+        var targetNamespace = AutorediNaming.ToNamespace(assemblyName) + ".Autoredi";
+        var result = AutorediSourceBuilder.Generate(present, targetNamespace, assemblyName);
+
+        // Output-stage issues (group-name warnings, method-name collisions).
+        foreach (var diagnostic in result.Diagnostics)
+        {
+            spc.ReportDiagnostic(diagnostic);
+        }
+
+        spc.AddSource("AutorediServices.g.cs", result.Source);
+    }
+
+    private static Diagnostic ToDiagnostic(DiagnosticInfo info)
+    {
+        var descriptor = Diagnostics.Resolve(info.Id);
         var location = info.ToLocation();
         return string.IsNullOrEmpty(info.Arg1)
             ? Diagnostic.Create(descriptor, location, info.Arg0)
             : Diagnostic.Create(descriptor, location, info.Arg0, info.Arg1);
     }
-
-    private static bool IsAutorediAttributeName(NameSyntax name) =>
-        (name switch
-        {
-            IdentifierNameSyntax simple => simple.Identifier.Text,
-            QualifiedNameSyntax qualified => LastNameSegment(qualified.Right),
-            AliasQualifiedNameSyntax alias => LastNameSegment(alias.Name),
-            _ => string.Empty,
-        }) == Names.AutorediAttName;
-
-    private static string LastNameSegment(NameSyntax name) => name switch
-    {
-        IdentifierNameSyntax simple => simple.Identifier.Text,
-        QualifiedNameSyntax qualified => LastNameSegment(qualified.Right),
-        AliasQualifiedNameSyntax alias => LastNameSegment(alias.Name),
-        _ => string.Empty,
-    };
-
-    private static DiagnosticDescriptor ResolveDescriptor(string id) => id switch
-    {
-        "AUTOREDI007" => Diagnostics.InterfaceNotImplemented,
-        "AUTOREDI010" => Diagnostics.InvalidLifetime,
-        "AUTOREDI011" => Diagnostics.InvalidInterfaceType,
-        "AUTOREDI012" => Diagnostics.InvalidImplementationType,
-        "AUTOREDI024" => Diagnostics.ServiceTypeNotAccessible,
-        "AUTOREDI026" => Diagnostics.OpenGenericServiceTypeNotSupported,
-        _ => throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown Autoredi diagnostic id.")
-    };
 }
 
 /// <summary>
@@ -183,7 +155,7 @@ internal static class AutorediAllServicesSource
             return;
         }
 
-        var assemblyNames = new List<string>(probe.OrderedReferencedContributors);
+        List<string> assemblyNames = [.. probe.OrderedReferencedContributors];
         if (selfContributes)
         {
             // The caller is registered last so its registrations win single-service resolution.

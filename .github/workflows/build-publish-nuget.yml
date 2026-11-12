@@ -46,11 +46,6 @@ env:
 # generator, so a green build says nothing about whether the package is usable; keeping the
 # two apart means a publishing problem can never be mistaken for a build break, and the
 # build is proven before anything is pushed anywhere.
-#
-# NOTE: the verify job still needs GH_PACKAGES_TOKEN, because Flowgen is published only to
-# GitHub Packages and restore requires it. A secret-free build becomes possible once Flowgen
-# is on nuget.org. GITHUB_TOKEN is not a substitute: it cannot read packages belonging to a
-# different repository.
 
 jobs:
   verify:
@@ -72,13 +67,12 @@ jobs:
           # consumer, which proves the netstandard2.0 asset is usable. Do not assume the
           # runner image happens to ship that runtime.
           dotnet-version: |
-            10.0.x
+            11.0.x
             8.0.x
 
-      # The verify job needs the key as well as the token: the package smoke test runs
-      # `dotnet pack`, and pack refuses to produce an unsigned package (AUTOREDI001). Giving
-      # verify the key costs nothing in secret exposure, because restore already required
-      # GH_PACKAGES_TOKEN, so this job was never reachable without repository secrets.
+      # The verify job needs the key: the package smoke test runs `dotnet pack`, and pack
+      # refuses to produce an unsigned package (AUTOREDI001). Restore itself is secret-free:
+      # every dependency, including the source generator's inputs, comes from nuget.org.
       - name: Create SNK file from secret
         env:
           SNK_FILE_BASE64: ${{ secrets.SNK_FILE_BASE64 }}
@@ -88,44 +82,6 @@ jobs:
             exit 1
           fi
           echo "$SNK_FILE_BASE64" | base64 --decode > ${{ github.workspace }}/Autoredi.snk
-
-      # Fails here, with instructions, rather than letting restore emit NU1301/401 lines that
-      # read like a missing package instead of a missing credential.
-      - name: Authenticate to GitHub Packages
-        env:
-          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-        run: |
-          set -euo pipefail
-          report() {
-            echo "::error title=GitHub Packages credentials missing or invalid::$1"
-            echo "Autoredi's build restores Flowgen, which is published only to GitHub Packages."
-            echo "That feed needs a personal access token with BOTH scopes:"
-            echo "  read:packages   - to restore Flowgen"
-            echo "  write:packages  - to publish Autoredi"
-            echo "GITHUB_TOKEN cannot be used here: it cannot read packages from a different repository."
-            echo "Create or regenerate a token at https://github.com/settings/tokens, then store it"
-            echo "as the repository secret GH_PACKAGES_TOKEN:"
-            echo "  https://github.com/koddek/Autoredi/settings/secrets/actions"
-            echo "Note: pull requests from forks cannot read repository secrets, so fork builds will"
-            echo "stop at this step until Flowgen is available on nuget.org."
-            exit 1
-          }
-
-          if [ -z "${GH_PACKAGES_TOKEN:-}" ]; then
-            report "GH_PACKAGES_TOKEN is empty (unset, or unavailable to a fork pull request)."
-          fi
-
-          dotnet nuget remove source github >/dev/null 2>&1 || true
-          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
-            --name github \
-            --username "${{ github.actor }}" \
-            --password "$GH_PACKAGES_TOKEN" \
-            --store-password-in-clear-text
-
-          if ! dotnet package search Flowgen --source github --exact-match --format json >/dev/null 2>&1; then
-            report "GitHub Packages rejected the token (401). It is revoked, expired, or missing a package scope."
-          fi
-          echo "GitHub Packages authentication verified."
 
       - name: Restore Solution
         run: dotnet restore Autoredi.slnx --force-evaluate
@@ -171,22 +127,17 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Configure GitHub Packages source
         env:
-          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "$GH_PACKAGES_TOKEN" ]; then
-            echo "::error::GH_PACKAGES_TOKEN is empty; cannot push to GitHub Packages."
-            exit 1
-          fi
-
           dotnet nuget remove source github || true
           dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
             --name github \
             --username "${{ github.actor }}" \
-            --password "$GH_PACKAGES_TOKEN" \
+            --password "$GITHUB_TOKEN" \
             --store-password-in-clear-text
 
       - name: Create SNK file from secret

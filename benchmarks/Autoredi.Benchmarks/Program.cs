@@ -19,7 +19,8 @@ class Program
         Console.WriteLine("  3. ScopedResolutionBenchmarks - Scoped service resolution");
         Console.WriteLine("  4. GroupingBenchmarks - Basic grouping performance");
         Console.WriteLine("  5. ComprehensiveRegistrationBenchmarks - Detailed Manual vs Autoredi (Groups, Priorities, Lifetimes)");
-        Console.WriteLine("  6. All - Run all benchmarks\n");
+        Console.WriteLine("  6. GeneratorBenchmarks - The generator's own cold-run cost");
+        Console.WriteLine("  7. All - Run all benchmarks\n");
 
         if (args.Length == 0)
         {
@@ -29,6 +30,7 @@ class Program
             BenchmarkRunner.Run<ScopedResolutionBenchmarks>();
             BenchmarkRunner.Run<GroupingBenchmarks>();
             BenchmarkRunner.Run<ComprehensiveRegistrationBenchmarks>();
+            BenchmarkRunner.Run<GeneratorBenchmarks>();
         }
         else
         {
@@ -55,6 +57,11 @@ class Program
                     BenchmarkRunner.Run<ComprehensiveRegistrationBenchmarks>();
                     break;
                 case "6":
+                case "generator":
+                case "gen":
+                    BenchmarkRunner.Run<GeneratorBenchmarks>();
+                    break;
+                case "7":
                 case "all":
                 default:
                     BenchmarkRunner.Run<ContainerBuildBenchmarks>();
@@ -62,6 +69,7 @@ class Program
                     BenchmarkRunner.Run<ScopedResolutionBenchmarks>();
                     BenchmarkRunner.Run<GroupingBenchmarks>();
                     BenchmarkRunner.Run<ComprehensiveRegistrationBenchmarks>();
+                    BenchmarkRunner.Run<GeneratorBenchmarks>();
                     break;
             }
         }

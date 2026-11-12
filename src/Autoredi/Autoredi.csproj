@@ -3,8 +3,10 @@
     <PropertyGroup>
         <!-- The package ships one attribute plus a Roslyn analyzer, so it has no reason to lock
              consumers to a single modern TFM. netstandard2.0 lets net8.0/net9.0 and older class
-             libraries reference Autoredi; the generator itself stays netstandard2.0. -->
-        <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
+             libraries reference Autoredi; net10.0 keeps .NET 10 (LTS) on its own asset; net11.0 is
+             the current LTS-band entry point. The analyzer itself stays netstandard2.0. -->
+        <TargetFrameworks>netstandard2.0;net10.0;net11.0</TargetFrameworks>
+        <LangVersion>15</LangVersion>
         <PackageId>Autoredi</PackageId>
         <Version>0.7.0</Version>
         <IsPackable>true</IsPackable>
@@ -14,22 +16,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Flowgen" Version="$(FlowgenVersion)" GeneratePathProperty="true" PrivateAssets="all" />
-    </ItemGroup>
-
-    <!-- GeneratePathProperty only emits PkgFlowgen inside TFM-conditioned groups, so it is empty
-         during the outer multi-target build that pack runs in. Fall back to the global packages
-         folder, otherwise the analyzer path collapses to "\lib\netstandard2.0\Flowgen.dll". -->
-    <PropertyGroup>
-        <FlowgenPackageRoot Condition="'$(PkgFlowgen)' != ''">$(PkgFlowgen)</FlowgenPackageRoot>
-        <FlowgenPackageRoot Condition="'$(FlowgenPackageRoot)' == ''">$(NuGetPackageRoot)flowgen\$(FlowgenVersion)</FlowgenPackageRoot>
-    </PropertyGroup>
-
-    <ItemGroup>
+        <!-- Building the library builds the analyzer too, so pack never picks up a stale generator DLL. -->
         <ProjectReference Include="..\Autoredi.Generators\Autoredi.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
-        <!-- Analyzer payload is TFM-independent, so it ships once at the package root of analyzers. -->
+        <!-- Analyzer payload is TFM-independent, so it ships once at the package root of analyzers.
+             The analyzer is self-contained: no third-party assemblies travel with it. -->
         <None Include="$(MSBuildProjectDirectory)\..\Autoredi.Generators\bin\$(Configuration)\netstandard2.0\Autoredi.Generators.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
-        <None Include="$(FlowgenPackageRoot)\lib\netstandard2.0\Flowgen.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
         <!-- Agent skill travels with the package so coding agents can discover usage guidance
              at ~/.nuget/packages/autoredi/<version>/skills/Autoredi/SKILL.md -->
         <None Include="..\..\docs\skills\autoredi\SKILL.md" Pack="true" PackagePath="skills/Autoredi" Visible="false" />

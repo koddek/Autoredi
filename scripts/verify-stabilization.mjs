@@ -78,6 +78,7 @@ const verificationTargets = [
   "src/Autoredi.Generators/AutorediNaming.cs",
   "src/Autoredi.Generators/Names.cs",
   "src/Autoredi.Generators/Diagnostics.cs",
+  "src/Autoredi.Generators/Emitting/CodeBuilder.cs",
   "src/Autoredi.Generators/Extraction/ServiceRegistrationExtractor.cs",
   "src/Autoredi.Generators/Extraction/AutorediSourceBuilder.cs",
 ];
@@ -112,14 +113,27 @@ const allGeneratorSources = [
   "src/Autoredi.Generators/AutorediGenerator.cs",
   "src/Autoredi.Generators/AutorediNaming.cs",
   "src/Autoredi.Generators/Names.cs",
+  "src/Autoredi.Generators/Diagnostics.cs",
+  "src/Autoredi.Generators/Emitting/CodeBuilder.cs",
   "src/Autoredi.Generators/Extraction/ServiceRegistrationExtractor.cs",
   "src/Autoredi.Generators/Extraction/AutorediSourceBuilder.cs",
   "src/Autoredi.Generators/Extraction/AutorediAllServicesBuilder.cs",
 ].map(read);
 
-require_("src/Autoredi.Generators/AutorediGenerator.cs", "Flow.Create()");
-require_("src/Autoredi.Generators/AutorediGenerator.cs", ".ForAttributeWithMetadataName(Names.AutorediAttFullName)");
-reject("src/Autoredi.Generators/AutorediGenerator.cs", "ForAttributeWithMetadataName<");
+// The analyzer is self-contained: it drives Roslyn directly. Flowgen was removed because the
+// build required a private GitHub Packages feed for a 2%-used fluent wrapper.
+for (const source of allGeneratorSources) {
+  if (/flowgen/i.test(source)) {
+    failures.push("A generator source still references Flowgen; the analyzer must be self-contained.");
+  }
+}
+require_("src/Autoredi.Generators/AutorediGenerator.cs", "context.SyntaxProvider");
+require_("src/Autoredi.Generators/AutorediGenerator.cs", ".ForAttributeWithMetadataName(");
+require_("src/Autoredi.Generators/AutorediGenerator.cs", "node is TypeDeclarationSyntax");
+require_("src/Autoredi.Generators/AutorediGenerator.cs", "Names.AutorediAttFullName");
+require_("src/Autoredi.Generators/AutorediGenerator.cs", "RegisterSourceOutput");
+require_("src/Autoredi.Generators/Emitting/CodeBuilder.cs", "internal sealed class CodeBuilder");
+reject("src/Autoredi.Generators/AutorediGenerator.cs", "Flow.Create");
 require_("src/Autoredi.Generators/AutorediNaming.cs", "ToNamespace");
 require_("src/Autoredi.Generators/AutorediNaming.cs", "ToAssemblyMethodSuffix");
 require_("src/Autoredi.Generators/AutorediNaming.cs", "EscapeXmlText");
@@ -177,10 +191,9 @@ for (const file of allProjects) {
     }
   }
   if (file !== centralProps && /Include="Flowgen"\s+Version="[\d.]+"/.test(source)) {
-    failures.push(`${file} hardcodes a Flowgen version; use $(FlowgenVersion) from ${centralProps}.`);
+    failures.push(`${file} pins Flowgen again; the analyzer must be self-contained.`);
   }
 }
-requireMatch(centralProps, /<FlowgenVersion>[\d.]+<\/FlowgenVersion>/, "must declare the single Flowgen version");
 
 // ---------------------------------------------------------------------------
 // Packaging contracts
@@ -190,9 +203,10 @@ requireMatch(
   /<TargetFrameworks>[^<]*netstandard2\.0[^<]*<\/TargetFrameworks>/,
   "must keep a netstandard2.0 asset so older consumers can reference the package",
 );
-// GeneratePathProperty is empty during the outer multi-target build, so the analyzer path
-// must have a fallback or pack fails with a bogus "/lib/<tfm>" path.
-requireMatch("src/Autoredi/Autoredi.csproj", /FlowgenPackageRoot/, "must resolve Flowgen outside the inner build too");
+// The analyzer must be self-contained: no third-party analyzer payload ships inside the package.
+reject("src/Autoredi/Autoredi.csproj", "Flowgen");
+reject("src/Autoredi.Generators/Autoredi.Generators.csproj", "Flowgen");
+reject("tests/Autoredi.Tests/Autoredi.Tests.csproj", "Flowgen");
 require_("src/Autoredi/Autoredi.csproj", "RequireStrongNameKeyForPack");
 require_("src/Autoredi/Autoredi.csproj", "AUTOREDI001");
 rejectMatch("src/Autoredi/Autoredi.csproj", /<GeneratePackageOnBuild>\s*true\s*<\/GeneratePackageOnBuild>/);
@@ -216,7 +230,7 @@ const workflowBody = workflow
 for (const [what, needle] of [
   // 8.0.x is not optional: the package smoke test runs a real net8.0 consumer, which is
   // the only proof that the netstandard2.0 asset actually works.
-  ["SDK version 10.0.x", "10.0.x"],
+  ["SDK version 11.0.x", "11.0.x"],
   ["SDK version 8.0.x for the net8.0 smoke consumer", "8.0.x"],
   ["solution restore", "dotnet restore Autoredi.slnx"],
   ["tests", "dotnet run --project tests/Autoredi.Tests"],
@@ -229,22 +243,26 @@ for (const [what, needle] of [
   // only thing that puts the version next to the name.
   ["GitHub Release", "gh release create"],
   ["nuget.org publish", "https://api.nuget.org/v3/index.json"],
-  // Flowgen lives only on GitHub Packages; a bad PAT must fail loudly and actionably,
-  // not as a wall of NU1301/401 lines during restore.
-  ["GitHub Packages auth probe", "dotnet package search Flowgen --source github"],
-  ["actionable token guidance", "read:packages   - to restore Flowgen"],
   // Verification and publishing are separate jobs, so a publishing problem can never be
   // mistaken for a build break.
   ["separate verify job", "\n  verify:"],
   ["separate publish job", "\n  publish:"],
   ["publish gated on verify", "needs: verify"],
   // The verify job runs `dotnet pack` via the package smoke test, and pack refuses to
-  // produce an unsigned package, so verify needs the strong-name key too.
+  // produce an unsigned package, so verify needs the strong-name key.
   ["strong-name key in both jobs", "Create SNK file from secret"],
 ]) {
   if (!workflowBody.includes(needle)) {
     failures.push(`.github/workflows/build-publish-nuget.yml is missing ${what}.`);
   }
+}
+
+// Restore is secret-free: the analyzer is self-contained and every dependency comes from
+// nuget.org, so the workflow must not carry GitHub Packages credentials for restore.
+if (/flowgen|GH_PACKAGES_TOKEN/i.test(workflowBody)) {
+  failures.push(
+    ".github/workflows/build-publish-nuget.yml still references Flowgen or GH_PACKAGES_TOKEN; the build must stay secret-free.",
+  );
 }
 
 // Both jobs must materialise the key; verify because it packs, publish because it signs.
@@ -288,6 +306,7 @@ for (const contract of [
   "AUTOREDI001",
   "last-registration",
   "netstandard2.0",
+  "net11.0",
   "TryAddAutorediDescriptor",
 ]) {
   if (!readme.includes(contract)) {
@@ -307,7 +326,7 @@ for (const stale of [
 }
 
 const skill = read("docs/skills/autoredi/SKILL.md");
-for (const contract of ["AUTOREDI012", "AUTOREDI001", "last-registration", "netstandard2.0", "TryAddAutorediDescriptor"]) {
+for (const contract of ["AUTOREDI012", "AUTOREDI001", "last-registration", "netstandard2.0", "net11.0", "TryAddAutorediDescriptor"]) {
   if (!skill.includes(contract)) {
     failures.push(`docs/skills/autoredi/SKILL.md does not document: ${contract}`);
   }

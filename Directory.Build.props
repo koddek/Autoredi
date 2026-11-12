@@ -19,13 +19,15 @@
 
         <IsPackable>false</IsPackable> <!-- default off; override per‑project -->
 
-        <LangVersion>latest</LangVersion>
         <ImplicitUsings>true</ImplicitUsings>
         <Nullable>enable</Nullable>
 
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <!-- Deterministic builds with proper SourceLink path mapping, and reproducible archives. -->
+        <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
     </PropertyGroup>
 
     <!-- Only the shipped library needs an XML doc file. Leaving CS1591 active there keeps
@@ -50,19 +52,15 @@
     <ItemGroup>
         <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/"/>
         <None Include="$(MSBuildThisFileDirectory)icon.png" Pack="true" PackagePath="/"/>
-        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="all"/>
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="11.0.100" PrivateAssets="all"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12"/>
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0"/>
+        <!-- net11.0 ships the MEDI abstractions in the shared framework (NU1510). Older targets and
+             netstandard2.0 still need the package, and the packageized library advertises the same floor. -->
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="11.0.0"
+                          Condition="'$(TargetFramework)' != 'net11.0'" />
     </ItemGroup>
-
-    <!-- Single source of truth for the Flowgen version. Autoredi and Autoredi.Generators must
-         agree, because the generator loads Flowgen.dll from beside itself at analyzer time.
-         Flowgen is not on nuget.org; it is restored from the GitHub Packages source. -->
-    <PropertyGroup>
-        <FlowgenVersion>0.12.0</FlowgenVersion>
-    </PropertyGroup>
 
 </Project>

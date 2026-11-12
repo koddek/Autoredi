@@ -11,6 +11,13 @@ public enum ServiceLifetime
 }
 
 /// <summary>
+/// One requested service type. <see cref="IsOpenGeneric"/> marks an open generic definition
+/// (<c>typeof(IRepository&lt;&gt;))</c>: MEDI binds the implementation by positional type-parameter
+/// substitution, so these entries cannot use the closed-generic <c>ServiceDescriptor</c> path.
+/// </summary>
+public readonly record struct ServiceTypeEntry(string Display, bool IsOpenGeneric);
+
+/// <summary>
 /// Immutable, value-comparable wrapper over <see cref="ImmutableArray{T}"/> so models survive
 /// the incremental pipeline cache without reference-equality false misses.
 /// </summary>
@@ -45,6 +52,18 @@ public readonly struct EquatableArray<T>(ImmutableArray<T> values) : IEquatable<
 }
 
 /// <summary>
+/// Plain-data location of an attribute in source, transported as plain data so it stays
+/// equatable through the incremental cache (a real <see cref="Location"/> is not).
+/// </summary>
+public readonly record struct SourceLocation(
+    string FilePath,
+    TextSpan TextSpan,
+    LinePositionSpan LineSpan)
+{
+    public Location ToLocation() => Location.Create(FilePath, TextSpan, LineSpan);
+}
+
+/// <summary>
 /// A diagnostic payload produced during extraction, transported as plain data so it stays
 /// equatable through the incremental cache. Rendered into a real Diagnostic at output time.
 /// </summary>
@@ -54,7 +73,7 @@ public readonly record struct DiagnosticInfo(
     string Arg1 = "",
     string? FilePath = null,
     TextSpan TextSpan = default,
-    LinePositionSpan LineSpan = default) : IEquatable<DiagnosticInfo>
+    LinePositionSpan LineSpan = default)
 {
     public bool HasLocation => !string.IsNullOrEmpty(FilePath);
 
@@ -66,44 +85,20 @@ public readonly record struct DiagnosticInfo(
 /// <summary>
 /// One class decorated with [Autoredi]: the registrations it expands to plus any
 /// extract-time validation issues. InterfaceTypes empty means register-the-class-as-itself.
+/// Equality is member-wise (InterfaceTypes/Diagnostics are equatable value wrappers), which is
+/// what the incremental pipeline caches on.
 /// </summary>
 public sealed record AutorediTarget(
-    EquatableArray<string> InterfaceTypes,
+    EquatableArray<ServiceTypeEntry> InterfaceTypes,
     EquatableArray<DiagnosticInfo> Diagnostics,
     string ImplementationType,
     ServiceLifetime Lifetime,
     string? ServiceKey,
     string? Group,
     int Priority,
-    string AssemblyName
-) : IEquatable<AutorediTarget>
+    string AssemblyName,
+    SourceLocation? Location = null
+)
 {
     public bool IsValid => Diagnostics.IsEmpty;
-
-    public bool Equals(AutorediTarget? other) =>
-        other is not null &&
-        ImplementationType == other.ImplementationType &&
-        InterfaceTypes.Equals(other.InterfaceTypes) &&
-        Lifetime == other.Lifetime &&
-        ServiceKey == other.ServiceKey &&
-        Group == other.Group &&
-        Priority == other.Priority &&
-        AssemblyName == other.AssemblyName &&
-        Diagnostics.Equals(other.Diagnostics);
-
-    public override int GetHashCode()
-    {
-        unchecked
-        {
-            var hash = ImplementationType.GetHashCode();
-            hash = (hash * 31) + InterfaceTypes.GetHashCode();
-            hash = (hash * 31) + (int)Lifetime;
-            hash = (hash * 31) + (ServiceKey?.GetHashCode() ?? 0);
-            hash = (hash * 31) + (Group?.GetHashCode() ?? 0);
-            hash = (hash * 31) + Priority;
-            hash = (hash * 31) + AssemblyName.GetHashCode();
-            hash = (hash * 31) + Diagnostics.GetHashCode();
-            return hash;
-        }
-    }
 }

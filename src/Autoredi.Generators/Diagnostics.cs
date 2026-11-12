@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using System.Collections.Immutable;
 
 namespace Autoredi.Generators;
 
@@ -66,10 +67,10 @@ public static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
-    public static readonly DiagnosticDescriptor OpenGenericServiceTypeNotSupported = new(
-        id: "AUTOREDI026",
-        title: "Open generic service type is not supported",
-        messageFormat: "The open generic type '{1}' specified for class '{0}' is not supported. Register a closed generic interface or a non-generic interface instead.",
+    public static readonly DiagnosticDescriptor OpenGenericServiceTypeMismatch = new(
+        id: "AUTOREDI027",
+        title: "Implementation does not match the open generic service type",
+        messageFormat: "The implementation class '{0}' cannot register the open generic interface '{1}'. Use a generic class whose type parameters map positionally to the interface's type parameters.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -81,4 +82,30 @@ public static class Diagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    /// <summary>
+    /// Maps a diagnostic id to its descriptor. Every id the generator can produce lives here,
+    /// so an unknown id is a programming error, not a lookup miss to guess at.
+    /// </summary>
+    private static readonly ImmutableDictionary<string, DiagnosticDescriptor> DescriptorsById =
+        new DiagnosticDescriptor[]
+        {
+            InterfaceNotImplemented,
+            InvalidLifetime,
+            InvalidInterfaceType,
+            InvalidImplementationType,
+            InvalidGroupName,
+            ServiceTypeNotAccessible,
+            ReferencedAssemblyNotCompatible,
+            OpenGenericServiceTypeMismatch,
+            MethodNameCollision,
+        }.ToImmutableDictionary(static descriptor => descriptor.Id, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Resolves the descriptor for a previously collected diagnostic id.
+    /// </summary>
+    public static DiagnosticDescriptor Resolve(string id) =>
+        DescriptorsById.TryGetValue(id, out var descriptor)
+            ? descriptor
+            : throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown Autoredi diagnostic id.");
 }

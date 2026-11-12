@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-11-12
+
+### Added
+- **Open generic service registrations.** `[Autoredi(ServiceLifetime.Scoped, typeof(IRepository<>))]` on a generic implementation class emits an open generic descriptor once, and every closed construction (`IRepository<User>`, `IRepository<Order>`, ...) resolves without further configuration. The implementation's type parameters must map positionally to the service type's parameters; mismatches report the new `AUTOREDI027` (Error) and emit nothing. Keyed open generic registrations work the same way. The registration contract applies unchanged, including across assemblies.
+- The package multi-targets `netstandard2.0;net10.0;net11.0`. .NET 11 is the build baseline; the analyzer stays `netstandard2.0` and now ships alone (no third-party assemblies in the package).
+- An analyzer benchmark (`GeneratorBenchmarks.ColdRun`, 200 attributed classes) measures the generator's own cold-run cost; run it with `dotnet run -c Release -f net10.0 --project benchmarks/Autoredi.Benchmarks -- 6`.
+
+### Changed
+- **Flowgen was removed; the analyzer is self-contained.** The generator drove Roslyn through Flowgen, a thin wrapper used for roughly 2% of its API, and the build restored that wrapper from a private GitHub Packages feed, so every consumer, CI run, and fork pull request needed a `GH_PACKAGES_TOKEN`. The generator now targets `SyntaxProvider.ForAttributeWithMetadataName` directly and ships its own ~150-line code builder. Establishing this removes the token from every step: maintainers build and fork contributors build without any secret; the `nupkg` is 44 KB lighter; the generator no longer downloads or loads a third-party analyzer. GH_PACKAGES_TOKEN is no longer used anywhere; publishing to GitHub Packages uses the same-repo `GITHUB_TOKEN` (`packages: write`).
+- **Dependencies**: `Microsoft.Extensions.DependencyInjection(.Abstractions)` 10.0.12 → 11.0.0; `Microsoft.SourceLink.GitHub` 10.0.401 → 11.0.100. `Microsoft.Extensions.DependencyInjection.Abstractions` is now referenced only where it is not in the shared framework: net11.0 ships it (NU1510), netstandard2.0/net10.0 keep the package. MEDI 11 removed no registration APIs Autoredi uses.
+- **The generator pipeline uses a single attribute scan** (`node is TypeDeclarationSyntax`) instead of Flowgen's blanket predicate that inspected every syntax node, and the self-contribution probe for `AddAutorediServicesAll()` is derived from the same provider instead of a second, cruder scan of the compilation. Both fixes are free and reduce incremental build cost.
+- **The generated `AutorediIndex` is now a single flat `HashSet<(Type, object?, Type?)>`** instead of one dictionary plus one hash set per service type. Same O(1)-per-descriptor check with identical semantics (same null-implementation and implementation-type rules), fewer objects per generated method call, less registration-time churn.
+- **Language version is pinned explicitly** (`15`) instead of `latest`; net11.0 projects take the TFM default (C# 15). `ContinuousIntegrationBuild` and `EmbedUntrackedSources` are set for deterministic packages with correct SourceLink path mapping.
+- **Output-stage diagnostics point at the offending attribute.** `AUTOREDI018` (group name sanitization) and `AUTOREDI023` (method-name collision) now carry the location of the first target in the conflicting group instead of `Location.None`.
+- Benchmarks multi-target `net10.0;net11.0`. BenchmarkDotNet 0.15.8 does not recognize the .NET 11 runtime yet, so the harness runs as `net10.0` until an update lands; the net11.0 target is ready for it.
+
+### Removed
+- **`AUTOREDI026` is gone**; open generic service registrations are supported (see above). Migrate: nothing to do for closed registrations; if you relied on the error as a signal, the new behaviour registers your open generic family or reports `AUTOREDI027` with the positional-mapping rule.
+- Flowgen and `$(FlowgenVersion)` (project properties, CI steps, the GitHub Packages auth probe, `analyzers/dotnet/cs/Flowgen.dll` in the package, and the generator's `using` directives for it).
+- `AnalyzerReleaseTracking`: the analyzer is not a shipped API contract and has no release-tracking files; `RS2008` stays suppressed and the flag is gone.
+
+### Migration notes
+- No public API changed. `AUTOREDI026` removal is the only diagnostic-behaviour change. The package version stays `0.7.0` until the maintainer cuts the release; this entry describes the upcoming release.
+- The `nupkg` dependency floor is unchanged for `netstandard2.0`/`net10.0` targets (MEDI 11 keeps those assets), so consumers on MEDI 10.x float to MEDI 11 `Abstractions` on restore; MEDI 11 removed no registration APIs Autoredi uses. `net11.0` consumers need no MEDI package at all, because the abstractions ship in the .NET 11 shared framework.
+
 ## [0.7.0] - 2026-11-09
 
 ### Added

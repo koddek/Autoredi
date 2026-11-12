@@ -2,7 +2,9 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net10.0</TargetFramework>
+        <!-- BenchmarkDotNet 0.15.8 does not recognize the .NET 11 runtime yet; net10.0 is kept
+             so the harness can run until BenchmarkDotNet ships .NET 11 support. -->
+        <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
@@ -10,6 +12,9 @@
     <!-- BenchmarkDotNet for performance testing -->
     <ItemGroup>
         <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+        <!-- Roslyn is needed to build the in-memory compilation the generator runs against.
+             No PrivateAssets: BenchmarkDotNet re-materialises this project and must see Roslyn there. -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     </ItemGroup>
 
     <!-- Reference the main project -->
@@ -24,5 +29,9 @@
             OutputItemType="Analyzer"
             ReferenceOutputAssembly="false"
         />
+        <!-- Direct reference for the generator benchmark (drives the generator in-proc). -->
+        <Reference Include="Autoredi.Generators">
+            <HintPath>..\..\src\Autoredi.Generators\bin\$(Configuration)\netstandard2.0\Autoredi.Generators.dll</HintPath>
+        </Reference>
     </ItemGroup>
 </Project>

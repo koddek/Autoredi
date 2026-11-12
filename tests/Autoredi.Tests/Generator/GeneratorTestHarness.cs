@@ -59,6 +59,9 @@ internal static class GeneratorTestHarness
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Reflection.dll")),
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Collections.dll")),
             MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.Private.CoreLib.dll")),
+            // MEDI's Type/Type and keyed Type factories resolve through overloads whose
+            // parameter list uses System.IServiceProvider (System.ComponentModel).
+            MetadataReference.CreateFromFile(Path.Combine(runtimeDir, "System.ComponentModel.dll")),
             MetadataReference.CreateFromFile(typeof(IServiceCollection).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(ServiceCollection).Assembly.Location),
         };
