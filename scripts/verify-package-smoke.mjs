@@ -65,8 +65,6 @@ try {
 
   const packageEntries = run("unzip", ["-l", packagePath]);
   for (const requiredEntry of [
-    "lib/netstandard2.0/Autoredi.dll",
-    "lib/net10.0/Autoredi.dll",
     "lib/net11.0/Autoredi.dll",
     "analyzers/dotnet/cs/Autoredi.Generators.dll",
     "skills/Autoredi/SKILL.md",
@@ -94,10 +92,8 @@ try {
 `,
   );
 
-  // The package is consumed from more than one target framework on purpose: net11.0 proves
-  // the current path, net8.0 proves the netstandard2.0 asset really is usable, which is the
-  // whole reason the package multi-targets.
-  const consumerFrameworks = ["net11.0", "net8.0"];
+  // Autoredi 2.x ships a net11.0-only library; the analyzer asset is TFM-independent.
+  const consumerFrameworks = ["net11.0"];
   for (const framework of consumerFrameworks) {
     const consumerDir = join(tempRoot, `consumer-${framework}`);
     const consumerProject = join(consumerDir, "Consumer.csproj");

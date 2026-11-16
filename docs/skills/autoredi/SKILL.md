@@ -14,7 +14,7 @@ Compile-time DI registration for Microsoft.Extensions.DependencyInjection. Put `
 3. Consumer code must `using <AssemblyName>.Autoredi;` — child namespaces are not auto-visible.
 4. Call the generated method(s) during composition root setup.
 
-The package targets `netstandard2.0`, `net10.0`, and `net11.0`, so referencing it works from net8.0/net9.0, .NET 10, .NET 11, and older class libraries too.
+Autoredi 2.x targets `net11.0` only; referencing it works from .NET 11 projects. Consumers still on netstandard2.0/net10.0 should stay on Autoredi 1.0.0.
 
 ## Attribute quick reference
 

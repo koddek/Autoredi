@@ -39,9 +39,9 @@ dotnet add package Microsoft.Extensions.DependencyInjection
 
 Autoredi references `Microsoft.Extensions.DependencyInjection.Abstractions` for its generated API. The full `Microsoft.Extensions.DependencyInjection` package supplies `ServiceCollection` and `BuildServiceProvider` in application and sample hosts.
 
-Target framework details: `net11.0` consumers need no MEDI package at all, because the abstractions ship in the .NET 11 shared framework. Consumers on `netstandard2.0` or `net10.0` pull `Microsoft.Extensions.DependencyInjection.Abstractions` 11.0.0 with the package.
+From 2.0.0 the package targets `net11.0` only: the MEDI abstractions ship in the .NET 11 shared framework, so consumers need no MEDI package at all. Consumers on `netstandard2.0` or `net10.0` should stay on `Autoredi` 1.0.0.
 
-The package multi-targets `netstandard2.0`, `net10.0`, and `net11.0`, so it can be referenced from older class libraries, net8.0/net9.0 projects, and current .NET 10/11 projects alike. The analyzer itself is `netstandard2.0` and self-contained, so the generator runs on every supported SDK.
+From 2.0.0 the package targets `net11.0` only; the netstandard2.0 and net10.0 assets are gone. The analyzer itself is `netstandard2.0` and self-contained, so the generator runs on every supported SDK.
 
 ## Usage
 
