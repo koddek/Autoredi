@@ -14,7 +14,7 @@
         <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
         <!-- Roslyn is needed to build the in-memory compilation the generator runs against.
              No PrivateAssets: BenchmarkDotNet re-materialises this project and must see Roslyn there. -->
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
     </ItemGroup>
 
     <!-- Reference the main project -->
