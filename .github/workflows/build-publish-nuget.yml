@@ -2,24 +2,19 @@ name: Build and Publish NuGet Packages
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
 
 env:
   MAIN_PROJECT_FILE: 'src/Autoredi/Autoredi.csproj'
   CONFIGURATION: 'Release'
   OUTPUT_DIR: './nuget_packages'
 
-# Building the package never publishes it. Every push and pull request restores and
-# builds the library project. A package is created, packed, and pushed to GitHub
-# Packages only by pushing a tag `v<Version>` whose version matches the <Version> in
-# src/Autoredi/Autoredi.csproj. External package sources are only used at pack time;
-# restore comes from nuget.org alone.
+# No job runs on branch pushes; they do not build and do not publish. A tag push
+# `v<Version>` matching the <Version> in src/Autoredi/Autoredi.csproj builds the
+# library, verifies the tag, packs, and publishes to GitHub Packages. The
+# workflow_dispatch trigger runs the same build manually (build-only rehearsal).
 
 jobs:
   build:

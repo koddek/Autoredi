@@ -231,7 +231,7 @@ for (const [what, needle] of [
   ["SDK version 11.0.x", "11.0.x"],
   ["source-project restore", 'dotnet restore "${{ env.MAIN_PROJECT_FILE }}"'],
   ["source-project build", 'dotnet build "${{ env.MAIN_PROJECT_FILE }}"'],
-  ["pull request trigger", "pull_request:"],
+  ["manual rehearsal trigger", "workflow_dispatch:"],
   // Publishing is tag-gated: pushes and pull requests build the source project only.
   ["tag trigger", "'v*'"],
   ["tag-gated publish job", "if: github.ref_type == 'tag'"],

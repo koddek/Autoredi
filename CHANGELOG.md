@@ -25,7 +25,7 @@ All notable changes to this project will be documented in this file.
 
 ### Migration notes
 - This is the first `1.0.0` release: .NET 11 upgrade, self-contained analyzer, and open generics, all landing as one release. `AUTOREDI026` removal is the only diagnostic-behaviour change for consumers upgrading from 0.7.0.
-- Publishing is tag-gated now: nothing ships until the `v1.0.0` tag is pushed, and the workflow verifies the tag against `<Version>` before packing. Building and merging to `main` never publishes.
+- Publishing is tag-gated now: no job runs on `main` or on pull requests, so branch pushes spend no Actions minutes. A tag `v1.0.0` (matching `<Version>`) builds the library, verifies the tag, packs, pushes to GitHub Packages, and creates the GitHub Release.
 - The `nupkg` dependency floor is unchanged for `netstandard2.0`/`net10.0` targets (MEDI 11 keeps those assets), so consumers on MEDI 10.x float to MEDI 11 `Abstractions` on restore; MEDI 11 removed no registration APIs Autoredi uses. `net11.0` consumers need no MEDI package at all, because the abstractions ship in the .NET 11 shared framework.
 
 ## [0.7.0] - 2026-11-09
