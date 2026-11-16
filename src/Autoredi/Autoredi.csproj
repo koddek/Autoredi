@@ -1,14 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <!-- The package ships one attribute plus a Roslyn analyzer, so it has no reason to lock
-             consumers to a single modern TFM. netstandard2.0 lets net8.0/net9.0 and older class
-             libraries reference Autoredi; net10.0 keeps .NET 10 (LTS) on its own asset; net11.0 is
-             the current LTS-band entry point. The analyzer itself stays netstandard2.0. -->
-        <TargetFrameworks>netstandard2.0;net10.0;net11.0</TargetFrameworks>
+        <!-- net11.0-only from 2.0.0: aligned with the .NET 11 line. Consumers still on
+             netstandard2.0/net10.0 should stay on Autoredi 1.0.0. The analyzer itself stays netstandard2.0. -->
+        <TargetFramework>net11.0</TargetFramework>
         <LangVersion>15</LangVersion>
         <PackageId>Autoredi</PackageId>
-        <Version>1.0.0</Version>
+        <Version>2.0.0</Version>
         <IsPackable>true</IsPackable>
         <!-- No GeneratePackageOnBuild: pack is an explicit, verified step (CI and
              scripts/verify-package-smoke.mjs both call dotnet pack). Building the solution must

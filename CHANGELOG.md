@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-11-16
+
+### Changed
+- **The library retargets to net11.0 only.** The netstandard2.0 and net10.0 assets are gone; Autoredi 1.0.0 remains available for consumers still on those frameworks. The analyzer stays `netstandard2.0` so Roslyn loads it in every IDE and build host.
+- **Dependencies**: Microsoft.CodeAnalysis.CSharp 5.9.0 -> 5.12.0 (benchmarks, tests, generators), Microsoft.CodeAnalysis.Analyzers 5.9.0 -> 5.12.0 (generators), TUnit 1.70.1 -> 1.85.0 and Imposter 0.1.11 -> 1.0.13 (tests). MEDI 11.0.0 unchanged (net11.0 ships the abstractions in the framework).
+- Benchmarks retarget to net11.0 (they were net10.0;net11.0).
+
+### Migration notes
+- This is a TFM-only breaking release: the generated registration contract and all diagnostics (including `AUTOREDI027` for open generics) are unchanged.
+- Consumers on netstandard2.0/net10.0 stay on `Autoredi` 1.0.0.
+
 ## [1.0.0] - 2026-11-15
 
 ### Added

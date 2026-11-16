@@ -4,7 +4,7 @@
         <OutputType>Exe</OutputType>
         <!-- BenchmarkDotNet 0.15.8 does not recognize the .NET 11 runtime yet; net10.0 is kept
              so the harness can run until BenchmarkDotNet ships .NET 11 support. -->
-        <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
+        <TargetFramework>net11.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
