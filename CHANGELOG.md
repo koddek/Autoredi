@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.8.0] - 2026-11-12
+## [1.0.0] - 2026-11-15
 
 ### Added
 - **Open generic service registrations.** `[Autoredi(ServiceLifetime.Scoped, typeof(IRepository<>))]` on a generic implementation class emits an open generic descriptor once, and every closed construction (`IRepository<User>`, `IRepository<Order>`, ...) resolves without further configuration. The implementation's type parameters must map positionally to the service type's parameters; mismatches report the new `AUTOREDI027` (Error) and emit nothing. Keyed open generic registrations work the same way. The registration contract applies unchanged, including across assemblies.
@@ -24,7 +24,8 @@ All notable changes to this project will be documented in this file.
 - `AnalyzerReleaseTracking`: the analyzer is not a shipped API contract and has no release-tracking files; `RS2008` stays suppressed and the flag is gone.
 
 ### Migration notes
-- No public API changed. `AUTOREDI026` removal is the only diagnostic-behaviour change. The package version stays `0.7.0` until the maintainer cuts the release; this entry describes the upcoming release.
+- This is the first `1.0.0` release: .NET 11 upgrade, self-contained analyzer, and open generics, all landing as one release. `AUTOREDI026` removal is the only diagnostic-behaviour change for consumers upgrading from 0.7.0.
+- Publishing is tag-gated now: nothing ships until the `v1.0.0` tag is pushed, and the workflow verifies the tag against `<Version>` before packing. Building and merging to `main` never publishes.
 - The `nupkg` dependency floor is unchanged for `netstandard2.0`/`net10.0` targets (MEDI 11 keeps those assets), so consumers on MEDI 10.x float to MEDI 11 `Abstractions` on restore; MEDI 11 removed no registration APIs Autoredi uses. `net11.0` consumers need no MEDI package at all, because the abstractions ship in the .NET 11 shared framework.
 
 ## [0.7.0] - 2026-11-09

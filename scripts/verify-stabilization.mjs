@@ -228,32 +228,40 @@ const workflowBody = workflow
   .filter((line) => !line.trimStart().startsWith("#"))
   .join("\n");
 for (const [what, needle] of [
-  // 8.0.x is not optional: the package smoke test runs a real net8.0 consumer, which is
-  // the only proof that the netstandard2.0 asset actually works.
   ["SDK version 11.0.x", "11.0.x"],
-  ["SDK version 8.0.x for the net8.0 smoke consumer", "8.0.x"],
-  ["solution restore", "dotnet restore Autoredi.slnx"],
-  ["tests", "dotnet run --project tests/Autoredi.Tests"],
-  ["modular sample", "dotnet run --project samples/Samples.Modular.App"],
-  ["stabilization verifier", "node scripts/verify-stabilization.mjs"],
-  ["package smoke test", "node scripts/verify-package-smoke.mjs"],
-  ["artifact check", "Check for committed build artifacts"],
+  ["source-project restore", 'dotnet restore "${{ env.MAIN_PROJECT_FILE }}"'],
+  ["source-project build", 'dotnet build "${{ env.MAIN_PROJECT_FILE }}"'],
   ["pull request trigger", "pull_request:"],
-  // A git tag never shows up in the Releases sidebar, so the release object is the
-  // only thing that puts the version next to the name.
+  // Publishing is tag-gated: pushes and pull requests build the source project only.
+  ["tag trigger", "'v*'"],
+  ["tag-gated publish job", "if: github.ref_type == 'tag'"],
   ["GitHub Release", "gh release create"],
-  ["nuget.org publish", "https://api.nuget.org/v3/index.json"],
-  // Verification and publishing are separate jobs, so a publishing problem can never be
-  // mistaken for a build break.
-  ["separate verify job", "\n  verify:"],
+  ["GitHub Packages publish", "nuget.pkg.github.com"],
+  ["tag vs version check", "does not match <Version>"],
+  // The build and the publish stay separate jobs; publish runs only after build.
   ["separate publish job", "\n  publish:"],
-  ["publish gated on verify", "needs: verify"],
-  // The verify job runs `dotnet pack` via the package smoke test, and pack refuses to
-  // produce an unsigned package, so verify needs the strong-name key.
-  ["strong-name key in both jobs", "Create SNK file from secret"],
+  ["publish gated on build", "needs: build"],
+  // The publish leg packs, and pack refuses to produce an unsigned package.
+  ["strong-name key in publish job", "Create SNK file from secret"],
 ]) {
   if (!workflowBody.includes(needle)) {
     failures.push(`.github/workflows/build-publish-nuget.yml is missing ${what}.`);
+  }
+}
+
+// Building in CI is restore + build of the source project only: no solution, no test
+// project, no sample, no benchmark, no smoke test. A tag push runs the same steps plus
+// pack/push/release.
+for (const forbidden of [
+  "Autoredi.slnx",
+  "dotnet run --project tests/Autoredi.Tests",
+  "Samples.Modular.App",
+  "verify-package-smoke",
+  "verify-stabilization",
+  "8.0.x",
+]) {
+  if (workflowBody.includes(forbidden)) {
+    failures.push(`.github/workflows/build-publish-nuget.yml still contains '${forbidden}'; CI must build only the source project and publish only on tag.`);
   }
 }
 
@@ -265,12 +273,12 @@ if (/flowgen|GH_PACKAGES_TOKEN/i.test(workflowBody)) {
   );
 }
 
-// Both jobs must materialise the key; verify because it packs, publish because it signs.
+// Exactly one job materialises the key: publish, because it packs and pack refuses to
+// produce an unsigned package (AUTOREDI001) without it.
 const snkSteps = (workflow.match(/- name: Create SNK file from secret/g) ?? []).length;
-if (snkSteps !== 2) {
+if (snkSteps !== 1) {
   failures.push(
-    `.github/workflows/build-publish-nuget.yml must create Autoredi.snk in both jobs (found ${snkSteps}). ` +
-      `The verify job packs via the package smoke test, which fails with AUTOREDI001 when unsigned.`,
+    `.github/workflows/build-publish-nuget.yml must create Autoredi.snk in exactly the publish job (found ${snkSteps}).`,
   );
 }
 // Every `dotnet nuget add source --password ...` must pass --store-password-in-clear-text.
@@ -291,9 +299,8 @@ for (const [match] of nugetAddSourceBlocks) {
 if (/Autoredi\.Generators\.csproj/.test(workflowBody)) {
   failures.push("CI still packs Autoredi.Generators.csproj, which is not packable and produces no package.");
 }
-if (!workflowBody.includes("'scripts/**'")) {
-  failures.push("CI does not trigger on verifier changes (scripts/** missing from the path filter).");
-}
+// No path filters: tag pushes must always reach the publish job regardless of which
+// files changed in the release commit.
 
 // ---------------------------------------------------------------------------
 // Consumer documentation

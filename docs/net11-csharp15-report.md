@@ -193,8 +193,8 @@ Note carefully: nothing here is a correctness bug in generated registrations. Th
 | CI-02 | H | Verify job requires `GH_PACKAGES_TOKEN` and probes GitHub Packages; fork PRs cannot build | Delete the auth step, the probe, and both secret-related comments. Restore becomes secret-free. This is a CI simplification with real community benefit |
 | CI-03 | M | Package smoke test consumes `net10.0` + `net8.0` | Add/replace consumer `net11.0`; keep `net8.0` (only proof the netstandard2.0 asset works). `scripts/verify-package-smoke.mjs` updated accordingly |
 | CI-04 | L | Workflow `pull_request`/`push` path filters include everything relevant; leave as-is | No change |
-| DOC-01 | H | README, `docs/skills/autoredi/SKILL.md`, `scripts/AGENTS.md`, `AGENTS.md` all describe net10.0 + Flowgen + GH_PACKAGES_TOKEN | Full sync pass in the same change; CHANGELOG entry under a new `[0.8.0]` section |
-| DOC-02 | M | `GATES.md` is a frozen ledger for 0.5.3→0.6.0 and references Flowgen | Leave as history, or add a one-line note that it is superseded by the 0.8.0 work. Do not rewrite history |
+| DOC-01 | H | README, `docs/skills/autoredi/SKILL.md`, `scripts/AGENTS.md`, `AGENTS.md` all describe net10.0 + Flowgen + GH_PACKAGES_TOKEN | Full sync pass in the same change; CHANGELOG entry under a new `[1.0.0]` section |
+| DOC-02 | M | `GATES.md` is a frozen ledger for 0.5.3→0.6.0 and references Flowgen | Leave as history, or add a one-line note that it is superseded by the 1.0.0 work. Do not rewrite history |
 | DOC-03 | M | `docs/skills/autoredi/SKILL.md` states "netstandard2.0 and net10.0" | Update to net11.0 wording; reinstall/refresh the opencode mirror at `~/.config/opencode/skills/autoredi/` if the team uses it |
 
 ---
@@ -249,9 +249,9 @@ Mechanical, in the order below. Every step has a check.
 7. `scripts/verify-stabilization.mjs`: replace the Flowgen assertions with: analyzer is self-contained (`GlobalUsings` has no `Flowgen`), `"11.0.x"` in CI, `"8.0.x"` in CI, `netstandard2.0\|net10.0\|net11.0` in the csproj pattern, keep everything else (diagnostics live-path check, no floating versions, README contracts).
 8. `scripts/verify-package-smoke.mjs`: nupkg assertions become `lib/netstandard2.0|net10.0|net11.0/Autoredi.dll`, `analyzers/dotnet/cs/Autoredi.Generators.dll`, **no Flowgen.dll**; consumer frameworks `net11.0` + `net8.0`; MEDI PackageReference 11.0.0.
 9. `tests/Autoredi.Tests/Autoredi.Tests.csproj`: delete the Flowgen `PackageReference`; TFM `net11.0`.
-10. Docs: `README.md` ("netstandard2.0, net10.0 and net11.0", .NET 11 wording), `docs/skills/autoredi/SKILL.md`, `AGENTS.md`, `scripts/AGENTS.md`, `CHANGELOG.md` (new `[0.8.0]` entry), `GATES.md` note.
+10. Docs: `README.md` ("netstandard2.0, net10.0 and net11.0", .NET 11 wording), `docs/skills/autoredi/SKILL.md`, `AGENTS.md`, `scripts/AGENTS.md`, `CHANGELOG.md` (new `[1.0.0]` entry), `GATES.md` note.
 11. Verify: `dotnet build Autoredi.slnx`, `dotnet run --project tests/Autoredi.Tests`, `dotnet run --project samples/Samples.Modular.App`, `node scripts/verify-package-smoke.mjs`, `node scripts/verify-stabilization.mjs`.
-12. Version bump to 0.8.0 only when the release is cut (that stays a user-directed step).
+12. Version bump to 1.0.0 only when the release is cut (that stays a user-directed step).
 
 The upgrade does not touch generated code text, the public API, or the registration contract.
 
@@ -374,7 +374,7 @@ This report was carried out on 2026-11-12 immediately after it was written. What
 - **P3 (open generics)**: `typeof(IFoo<>)` is now supported for generic implementation classes with positionally mapped type parameters. Closed and open registrations share the same `TryAddAutorediDescriptor` index and the same registration contract. New diagnostic `AUTOREDI027` (arity or positional mismatch); `AUTOREDI026` was removed. Keyed open generics and cross-assembly open-generic multiplicity both work and are covered by tests.
 - **P4**: `[with(capacity: ...), ...]` collection arguments are used in the emit path; unions and labeled jumps were not adopted, per the report's own recommendation.
 
-Test count grew from 95 to 108. All gates in `GATES.md` pass. Remaining item with the maintainer: the `0.7.0 → 0.8.0` version bump at release time. BenchmarkDotNet 0.15.8 does not recognize the .NET 11 runtime yet, so benchmarks multi-target `net10.0;net11.0` and run as net10.0 until BenchmarkDotNet catches up.
+Test count grew from 95 to 108. All gates in `GATES.md` pass. Remaining item with the maintainer: the `0.7.0 → 1.0.0` version bump at release time. BenchmarkDotNet 0.15.8 does not recognize the .NET 11 runtime yet, so benchmarks multi-target `net10.0;net11.0` and run as net10.0 until BenchmarkDotNet catches up.
 
 ---
 

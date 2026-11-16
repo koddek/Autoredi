@@ -59,10 +59,10 @@ Scope: upgrade the repository to .NET 11 and MEDI 11, remove Flowgen entirely an
   EXPECT: DOCS_IN_SYNC
   EVIDENCE: exit=0; output=DOCS_IN_SYNC
 
-- [x] G11: CHANGELOG carries a new 0.8.0 entry describing the upgrade, Flowgen removal, and open generics
-  CHECK: node -e "const s=require('fs').readFileSync('CHANGELOG.md','utf8'); for (const needle of ['## [0.8.0]','Flowgen','AUTOREDI027','net11.0']) if(!s.includes(needle)) throw new Error('changelog missing '+needle); console.log('CHANGELOG_080')"
-  EXPECT: CHANGELOG_080
-  EVIDENCE: exit=0; output=CHANGELOG_080
+- [x] G11: CHANGELOG carries a new 1.0.0 entry describing the upgrade, Flowgen removal, and open generics
+  CHECK: node -e "const s=require('fs').readFileSync('CHANGELOG.md','utf8'); for (const needle of ['## [1.0.0]','Flowgen','AUTOREDI027','net11.0']) if(!s.includes(needle)) throw new Error('changelog missing '+needle); console.log('CHANGELOG_100')"
+  EXPECT: CHANGELOG_100
+  EVIDENCE: exit=0; output=CHANGELOG_100
 
 - [x] G12: Emitted-source parity spot check (generated text is stable outside the intended helper and open-generic emitter changes)
   CHECK: dotnet build Autoredi.slnx --nologo -v:q -clp:ErrorsOnly

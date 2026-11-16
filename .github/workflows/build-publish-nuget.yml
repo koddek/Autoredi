@@ -1,55 +1,29 @@
 name: Build and Publish NuGet Packages
 
 on:
-  workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'samples/**'
-      - 'benchmarks/**'
-      - 'scripts/**'
-      - 'Directory.Build.*'
-      - 'Autoredi.slnx'
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
-      - '.github/workflows/build-publish-nuget.yml'
   push:
     branches:
       - main
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'samples/**'
-      - 'benchmarks/**'
-      - 'scripts/**'
-      - 'Directory.Build.*'
-      - 'Autoredi.slnx'
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
-      - '.github/workflows/build-publish-nuget.yml'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
 
 env:
   MAIN_PROJECT_FILE: 'src/Autoredi/Autoredi.csproj'
   CONFIGURATION: 'Release'
   OUTPUT_DIR: './nuget_packages'
 
-# Verification and publishing are separate jobs on purpose. Autoredi ships a source
-# generator, so a green build says nothing about whether the package is usable; keeping the
-# two apart means a publishing problem can never be mistaken for a build break, and the
-# build is proven before anything is pushed anywhere.
+# Building the package never publishes it. Every push and pull request restores and
+# builds the library project. A package is created, packed, and pushed to GitHub
+# Packages only by pushing a tag `v<Version>` whose version matches the <Version> in
+# src/Autoredi/Autoredi.csproj. External package sources are only used at pack time;
+# restore comes from nuget.org alone.
 
 jobs:
-  verify:
-    name: Verify
+  build:
+    name: Build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -57,66 +31,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          # 8.0.x is required because the package smoke test restores and runs a real net8.0
-          # consumer, which proves the netstandard2.0 asset is usable. Do not assume the
-          # runner image happens to ship that runtime.
-          dotnet-version: |
-            11.0.x
-            8.0.x
+          dotnet-version: '11.0.x'
 
-      # The verify job needs the key: the package smoke test runs `dotnet pack`, and pack
-      # refuses to produce an unsigned package (AUTOREDI001). Restore itself is secret-free:
-      # every dependency, including the source generator's inputs, comes from nuget.org.
-      - name: Create SNK file from secret
-        env:
-          SNK_FILE_BASE64: ${{ secrets.SNK_FILE_BASE64 }}
-        run: |
-          if [ -z "$SNK_FILE_BASE64" ]; then
-            echo "::error::SNK_FILE_BASE64 is empty. Store the base64 Autoredi.snk as a repository secret."
-            exit 1
-          fi
-          echo "$SNK_FILE_BASE64" | base64 --decode > ${{ github.workspace }}/Autoredi.snk
+      - name: Restore
+        run: dotnet restore "${{ env.MAIN_PROJECT_FILE }}"
 
-      - name: Restore Solution
-        run: dotnet restore Autoredi.slnx --force-evaluate
-
-      - name: Build Solution
-        run: dotnet build Autoredi.slnx --configuration "${{ env.CONFIGURATION }}" --no-restore
-
-      - name: Run Tests
-        run: dotnet run --project tests/Autoredi.Tests --configuration "${{ env.CONFIGURATION }}" --no-build
-
-      - name: Run Modular Sample
-        run: dotnet run --project samples/Samples.Modular.App --configuration "${{ env.CONFIGURATION }}" --no-build
-
-      - name: Run Stabilization Verifier
-        run: node scripts/verify-stabilization.mjs
-
-      - name: Run Package Smoke Test
-        run: node scripts/verify-package-smoke.mjs
-
-      - name: Check for committed build artifacts
-        run: |
-          git diff --check
-          if git ls-files | grep -E '(^|/)(bin|obj)/|\.nupkg$|\.snupkg$'; then
-            echo "Build artifacts are tracked in git. Remove them from the index."
-            exit 1
-          fi
+      - name: Build
+        run: dotnet build "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" --no-restore
 
   publish:
     name: Publish
-    needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
       packages: write
+      contents: write
 
     steps:
       - name: Checkout code
@@ -129,75 +63,47 @@ jobs:
         with:
           dotnet-version: '11.0.x'
 
-      - name: Configure GitHub Packages source
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          dotnet nuget remove source github || true
-          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
-            --name github \
-            --username "${{ github.actor }}" \
-            --password "$GITHUB_TOKEN" \
-            --store-password-in-clear-text
-
+      # Pack refuses to produce an unsigned package (AUTOREDI001). The key is a repository
+      # secret; a tagged release without it fails here, not on a feed.
       - name: Create SNK file from secret
-        run: echo "${{ secrets.SNK_FILE_BASE64 }}" | base64 --decode > ${{ github.workspace }}/Autoredi.snk
+        env:
+          SNK_FILE_BASE64: ${{ secrets.SNK_FILE_BASE64 }}
+        run: |
+          if [ -z "${SNK_FILE_BASE64:-}" ]; then
+            echo "::error::SNK_FILE_BASE64 is empty. Store the base64 Autoredi.snk as a repository secret."
+            exit 1
+          fi
+          echo "$SNK_FILE_BASE64" | base64 --decode > ${{ github.workspace }}/Autoredi.snk
 
-      - name: Extract Version
+      - name: Verify the tag matches the package version
         id: extract_version
         run: |
-          VERSION=$(grep '<Version>' ${{ env.MAIN_PROJECT_FILE }} | sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted version: $VERSION"
+          VERSION=$(grep '<Version>' "${{ env.MAIN_PROJECT_FILE }}" | sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p')
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not extract <Version> from ${{ env.MAIN_PROJECT_FILE }}"
+            exit 1
+          fi
+          if [ "v${VERSION}" != "${GITHUB_REF#refs/tags/}" ]; then
+            echo "::error::Tag '${GITHUB_REF#refs/tags/}' does not match <Version> '$VERSION' in ${{ env.MAIN_PROJECT_FILE }}. Bump <Version> or fix the tag."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tag ${GITHUB_REF#refs/tags/} matches <Version> $VERSION."
 
-      - name: Restore Solution
-        run: dotnet restore ${{ env.MAIN_PROJECT_FILE }}
+      - name: Restore
+        run: dotnet restore "${{ env.MAIN_PROJECT_FILE }}"
 
-      - name: Pack Autoredi
-        run: |
-          dotnet pack "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" -o "${{ env.OUTPUT_DIR }}"
+      - name: Pack
+        run: dotnet pack "${{ env.MAIN_PROJECT_FILE }}" --configuration "${{ env.CONFIGURATION }}" --no-restore -o "${{ env.OUTPUT_DIR }}"
 
       - name: Push to GitHub Packages
         run: |
           dotnet nuget push "${{ env.OUTPUT_DIR }}/*.nupkg" \
-            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}" \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
             --api-key "${{ secrets.GITHUB_TOKEN }}" \
             --skip-duplicate
 
-      # nuget.org is what makes the package discoverable and auto-updatable from an IDE.
-      # Skipped cleanly when no key is configured so the rest of the release still ships.
-      - name: Push to nuget.org
-        env:
-          VERSION: ${{ steps.extract_version.outputs.version }}
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-          PACKAGE_DIR: ${{ env.OUTPUT_DIR }}
-        run: |
-          if [ -z "$NUGET_API_KEY" ]; then
-            echo "::notice::NUGET_API_KEY is not configured; skipping the nuget.org publish."
-            exit 0
-          fi
-          dotnet nuget push "$PACKAGE_DIR/Autoredi.$VERSION.nupkg" \
-            --source https://api.nuget.org/v3/index.json \
-            --api-key "$NUGET_API_KEY" \
-            --skip-duplicate
-
-      - name: Ensure the release tag exists
-        env:
-          VERSION: ${{ steps.extract_version.outputs.version }}
-        run: |
-          if git rev-parse "refs/tags/v$VERSION" >/dev/null 2>&1; then
-            echo "Tag v$VERSION already exists."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag -a "v$VERSION" -m "Release v$VERSION"
-            git push origin "v$VERSION"
-          fi
-
-      # A git tag is invisible in the Releases sidebar; only a release object shows the
-      # version there. No .nupkg assets on purpose: consumers restore from the NuGet feed
-      # in their IDE, not from a download link.
-      - name: Publish the GitHub Release
+      - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.extract_version.outputs.version }}
